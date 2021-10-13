@@ -344,6 +344,7 @@ public abstract class RebalanceImpl {
                         log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
                     }
                 } else if (pq.isPullExpired()) {
+                    // 在负载均衡更新ProcessQueueTable时调用，如果拉取失效，ProcessQueue将被丢弃。
                     switch (this.consumeType()) {
                         case CONSUME_ACTIVELY:
                             break;

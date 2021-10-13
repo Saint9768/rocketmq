@@ -254,6 +254,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
                 mQClientFactory.start();
 
+                // 启动一个定时任务，10s跑一次
                 startScheduleTask();
 
                 this.serviceState = ServiceState.RUNNING;

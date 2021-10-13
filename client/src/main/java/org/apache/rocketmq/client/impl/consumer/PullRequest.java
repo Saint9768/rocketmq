@@ -18,9 +18,21 @@ package org.apache.rocketmq.client.impl.consumer;
 
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * consumer拉取消息的报文包装类
+ */
 public class PullRequest {
+    /**
+     * 消费组
+     */
     private String consumerGroup;
+    /**
+     * 拉取回来的消息元数据信息
+     */
     private MessageQueue messageQueue;
+    /**
+     * 队列消费快照：消息拉取的时候，会将实际消息体、拉取相关的操作存放在其中
+     */
     private ProcessQueue processQueue;
     private long nextOffset;
     private boolean lockedFirst = false;
@@ -91,7 +103,7 @@ public class PullRequest {
     @Override
     public String toString() {
         return "PullRequest [consumerGroup=" + consumerGroup + ", messageQueue=" + messageQueue
-            + ", nextOffset=" + nextOffset + "]";
+                + ", nextOffset=" + nextOffset + "]";
     }
 
     public ProcessQueue getProcessQueue() {
