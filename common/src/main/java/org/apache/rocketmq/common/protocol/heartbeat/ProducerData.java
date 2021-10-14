@@ -21,6 +21,9 @@
 package org.apache.rocketmq.common.protocol.heartbeat;
 
 public class ProducerData {
+    /**
+     * groupName
+     */
     private String groupName;
 
     public String getGroupName() {

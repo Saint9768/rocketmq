@@ -922,7 +922,9 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             subscriptionData.setClassFilterMode(true);
             subscriptionData.setFilterClassSource(filterClassSource);
             this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
+            // 客户端向服务端发起连接的连接器
             if (this.mQClientFactory != null) {
+                // consumer向所有的broker发送心跳包
                 this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
             }
 
@@ -1044,9 +1046,10 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         try {
             this.makeSureStateOK();
             Set<MessageQueue> mqs = new HashSet<MessageQueue>();
+            // getProcessQueueTable获取没有消费的消息？
             Set<MessageQueue> allocateMq = this.rebalanceImpl.getProcessQueueTable().keySet();
             mqs.addAll(allocateMq);
-
+            // 根据不同的消息传播方式，选择持久化到broker还是本地
             this.offsetStore.persistAll(mqs);
         } catch (Exception e) {
             log.error("group: " + this.defaultMQPushConsumer.getConsumerGroup() + " persistConsumerOffset exception", e);

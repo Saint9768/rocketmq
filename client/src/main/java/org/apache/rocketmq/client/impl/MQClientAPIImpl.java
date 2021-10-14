@@ -184,6 +184,7 @@ public class MQClientAPIImpl {
         final ClientRemotingProcessor clientRemotingProcessor,
         RPCHook rpcHook, final ClientConfig clientConfig) {
         this.clientConfig = clientConfig;
+        // 设置默认nameServer地址，有需要可以去MixAll类中修改默认地址 todo
         topAddressing = new TopAddressing(MixAll.getWSAddr(), clientConfig.getUnitName());
         this.remotingClient = new NettyRemotingClient(nettyClientConfig, null);
         this.clientRemotingProcessor = clientRemotingProcessor;
@@ -214,6 +215,9 @@ public class MQClientAPIImpl {
 
     public String fetchNameServerAddr() {
         try {
+            // 实例化MQClientAPIImpl时，会从给topAddressing赋予默认值
+            // 大家会发现在本地我们跑的时候，addrs为空，卧槽，不对呀，topAddressing有值啊，来我们去看看fetchNSAddr()方法
+            // featchNSAddr()方法中会尝试调用默认的nameServer，只有调通才返回。
             String addrs = this.topAddressing.fetchNSAddr();
             if (addrs != null) {
                 if (!addrs.equals(this.nameSrvAddr)) {
@@ -1013,9 +1017,13 @@ public class MQClientAPIImpl {
         final HeartbeatData heartbeatData,
         final long timeoutMillis
     ) throws RemotingException, MQBrokerException, InterruptedException {
+        // 包装一个发送请求的命令
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.HEART_BEAT, null);
+        // 请求的编程语言类型为JAVA
         request.setLanguage(clientConfig.getLanguage());
+        // HeartbeatData心跳包-JSON
         request.setBody(heartbeatData.encode());
+        // 执行命令
         RemotingCommand response = this.remotingClient.invokeSync(addr, request, timeoutMillis);
         assert response != null;
         switch (response.getCode()) {

@@ -26,9 +26,21 @@ import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 
 public class ConsumerData {
     private String groupName;
+    /**
+     * 消费类型：push/pull
+     */
     private ConsumeType consumeType;
+    /**
+     * 消息传播方式
+     */
     private MessageModel messageModel;
+    /**
+     * 从哪开始消费
+     */
     private ConsumeFromWhere consumeFromWhere;
+    /**
+     * 订阅数据：过滤消息相关标签、SQL规则等
+     */
     private Set<SubscriptionData> subscriptionDataSet = new HashSet<SubscriptionData>();
     private boolean unitMode;
 

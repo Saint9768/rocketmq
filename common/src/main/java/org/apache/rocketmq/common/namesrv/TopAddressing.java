@@ -65,11 +65,13 @@ public class TopAddressing {
     }
 
     public final String fetchNSAddr(boolean verbose, long timeoutMills) {
+        // 这里是可以获取到默认nameServer地址的
         String url = this.wsAddr;
         try {
             if (!UtilAll.isBlank(this.unitName)) {
                 url = url + "-" + this.unitName + "?nofix=1";
             }
+            // 注意了，这里会先尝试去调默认的nameServer地址，能调通才会返回
             HttpTinyClient.HttpResult result = HttpTinyClient.httpGet(url, null, null, "UTF-8", timeoutMills);
             if (200 == result.code) {
                 String responseStr = result.content;
