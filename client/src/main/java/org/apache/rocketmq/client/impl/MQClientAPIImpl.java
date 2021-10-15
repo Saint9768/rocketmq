@@ -750,6 +750,7 @@ public class MQClientAPIImpl {
                 RemotingCommand response = responseFuture.getResponseCommand();
                 if (response != null) {
                     try {
+                        // 将返回的内容封装成pullResult
                         PullResult pullResult = MQClientAPIImpl.this.processPullResponse(response, addr);
                         assert pullResult != null;
                         pullCallback.onSuccess(pullResult);
@@ -784,6 +785,7 @@ public class MQClientAPIImpl {
             final RemotingCommand response,
             final String addr) throws MQBrokerException, RemotingCommandException {
         PullStatus pullStatus = PullStatus.NO_NEW_MSG;
+        // 根据返回值填充拉取状态pullStatus
         switch (response.getCode()) {
             case ResponseCode.SUCCESS:
                 pullStatus = PullStatus.FOUND;
