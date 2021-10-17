@@ -374,6 +374,7 @@ public abstract class RebalanceImpl {
         }
 
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
+        // 遍历所有的MessageQueue，然后构建对应的ProcessQueue给它
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
                 if (isOrder && !this.lock(mq)) {
