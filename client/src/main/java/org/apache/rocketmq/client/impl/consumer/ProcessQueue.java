@@ -169,7 +169,7 @@ public class ProcessQueue {
     }
 
     /**
-     * 初始化属性
+     * 初始化属性：将消息放入到ProcessQueue的msgTreeMap中
      * MQClientInstance#start()方法中调用pullMessageService#start()
      * PullMessageService本身是一个ServiceThread，它的run()方法中会调用DefaultMQPushConsumerImpl#pullMessage()方法，
      * 然后在其中new出的PullCallBack的onSuccess()方法中：
