@@ -508,6 +508,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     }
 
     public void executePullRequestImmediately(final PullRequest pullRequest) {
+        // 调用PullMessageService服务的executePullRequestImmediately()方法
         this.mQClientFactory.getPullMessageService().executePullRequestImmediately(pullRequest);
     }
 

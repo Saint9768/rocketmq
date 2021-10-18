@@ -64,6 +64,7 @@ public class PullMessageService extends ServiceThread {
 
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
+            // 将PullRequest对象放入到pullRequestQueue（一个LinkedBlockingQueue阻塞队列中）
             this.pullRequestQueue.put(pullRequest);
         } catch (InterruptedException e) {
             log.error("executePullRequestImmediately pullRequestQueue.put", e);
@@ -97,6 +98,7 @@ public class PullMessageService extends ServiceThread {
     public void run() {
         log.info(this.getServiceName() + " service started");
 
+        // 只要线程还活着，就一直循环执行pullMessage()方法
         while (!this.isStopped()) {
             try {
                 // 从pullRequestQueue中获取一个PullRequest请求
