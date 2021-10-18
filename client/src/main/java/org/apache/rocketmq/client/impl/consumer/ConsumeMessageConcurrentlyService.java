@@ -212,6 +212,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             try {
                 this.consumeExecutor.submit(consumeRequest);
             } catch (RejectedExecutionException e) {
+                // 线程池消费失败之后5秒重试
                 this.submitConsumeRequestLater(consumeRequest);
             }
         } else {
@@ -228,13 +229,13 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
 
                 ConsumeRequest consumeRequest = new ConsumeRequest(msgThis, processQueue, messageQueue);
                 try {
-                    // 消费端消息线程池负责处理当前消费请求，顺序消费要讲核心线程数和最大线程数都设置为1.
+                    // 消费端消息线程池负责处理当前消费请求，顺序消费要将核心线程数和最大线程数都设置为1.
                     this.consumeExecutor.submit(consumeRequest);
                 } catch (RejectedExecutionException e) {
                     for (; total < msgs.size(); total++) {
                         msgThis.add(msgs.get(total));
                     }
-
+                    // 线程池消费失败之后5秒重试
                     this.submitConsumeRequestLater(consumeRequest);
                 }
             }
@@ -457,7 +458,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 status = ConsumeConcurrentlyStatus.RECONSUME_LATER;
             }
 
-            // 如果消费处理处理成功，则执行后置的钩子函数
+            // 如果消费处理成功，则执行后置的钩子函数
             if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
                 consumeMessageContext.setStatus(status.toString());
                 consumeMessageContext.setSuccess(ConsumeConcurrentlyStatus.CONSUME_SUCCESS == status);

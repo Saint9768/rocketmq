@@ -355,7 +355,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                 // 将拉取到的消息放入到ProcessQueue中
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
                                 // 消费消息服务开始干活
-                                DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
+                                    DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
                                         pullResult.getMsgFoundList(),
                                         processQueue,
                                         pullRequest.getMessageQueue(),
@@ -439,6 +439,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             }
         }
 
+        // 从FilterServer中获取类过滤器
         String subExpression = null;
         boolean classFilter = false;
         SubscriptionData sd = this.rebalanceImpl.getSubscriptionInner().get(pullRequest.getMessageQueue().getTopic());
