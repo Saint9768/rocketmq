@@ -204,7 +204,9 @@ public class MappedFileQueue {
         }
 
         if (createOffset != -1 && needCreate) {
+            // 当前所需创建文件的路径名
             String nextFilePath = this.storePath + File.separator + UtilAll.offset2FileName(createOffset);
+            // 计算出下一个所需创建文件的路径名
             String nextNextFilePath = this.storePath + File.separator
                 + UtilAll.offset2FileName(createOffset + this.mappedFileSize);
             MappedFile mappedFile = null;

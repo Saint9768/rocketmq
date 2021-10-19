@@ -54,6 +54,11 @@ public class BrokerStartup {
     public static String configFile = null;
     public static InternalLogger log;
 
+    /**
+     * 执行Broker启动命令的时候会进入
+     * 比如：bin/mqbroker -n 106.15.139.143:9876 -c conf/broker.conf autoCreateTopicEnable=true &
+     * @param args
+     */
     public static void main(String[] args) {
         start(createBrokerController(args));
     }
@@ -108,6 +113,7 @@ public class BrokerStartup {
             }
 
             final BrokerConfig brokerConfig = new BrokerConfig();
+            // 初始化Netty相关内容
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
@@ -121,6 +127,7 @@ public class BrokerStartup {
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
 
+            // 处理args
             if (commandLine.hasOption('c')) {
                 String file = commandLine.getOptionValue('c');
                 if (file != null) {
@@ -147,6 +154,7 @@ public class BrokerStartup {
                 System.exit(-2);
             }
 
+            // 检查nameServer
             String namesrvAddr = brokerConfig.getNamesrvAddr();
             if (null != namesrvAddr) {
                 try {
@@ -162,6 +170,7 @@ public class BrokerStartup {
                 }
             }
 
+            // 检查Broker角色
             switch (messageStoreConfig.getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
@@ -211,6 +220,7 @@ public class BrokerStartup {
             MixAll.printObjectProperties(log, nettyClientConfig);
             MixAll.printObjectProperties(log, messageStoreConfig);
 
+            // 构建BrokerController
             final BrokerController controller = new BrokerController(
                 brokerConfig,
                 nettyServerConfig,
@@ -219,6 +229,7 @@ public class BrokerStartup {
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
 
+            // 初始化BrokerController todo 这个很重要
             boolean initResult = controller.initialize();
             if (!initResult) {
                 controller.shutdown();

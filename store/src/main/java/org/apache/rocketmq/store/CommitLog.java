@@ -593,8 +593,10 @@ public class CommitLog {
 
         long elapsedTimeInLock = 0;
         MappedFile unlockMappedFile = null;
+        // 获取mappedFileQueue中最后一个MappedFile
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
+        // 加锁，同步写缓冲区
         putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
         try {
             long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
@@ -613,13 +615,17 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
 
+            // 将消息写到mappedFile中，并返回一个状态
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
                     break;
+
+                // 数据在一个文件中写不完
                 case END_OF_FILE:
                     unlockMappedFile = mappedFile;
-                    // Create a new file, re-write the message
+                    // Create a new file, re-write the message，
+                    // 创建一个文件，重新写数据
                     mappedFile = this.mappedFileQueue.getLastMappedFile(0);
                     if (null == mappedFile) {
                         // XXX: warn and notify me
@@ -661,7 +667,9 @@ public class CommitLog {
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
 
+        // 刷盘操作
         CompletableFuture<PutMessageStatus> flushResultFuture = submitFlushRequest(result, msg);
+        // 集群模式下推给slave，做主从复制
         CompletableFuture<PutMessageStatus> replicaResultFuture = submitReplicaRequest(result, msg);
         return flushResultFuture.thenCombine(replicaResultFuture, (flushStatus, replicaStatus) -> {
             if (flushStatus != PutMessageStatus.PUT_OK) {
@@ -909,12 +917,15 @@ public class CommitLog {
 
     public CompletableFuture<PutMessageStatus> submitFlushRequest(AppendMessageResult result, MessageExt messageExt) {
         // Synchronization flush
+        // 同步刷盘，默认是异步
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
             if (messageExt.isWaitStoreMsgOK()) {
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes(),
                         this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout());
+                // 使用封装一层的CountDownLatch同步等待
                 service.putRequest(request);
+                // Future框架，但是需要等待结果的返回。
                 return request.future();
             } else {
                 service.wakeup();
@@ -932,7 +943,14 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 集群，主从复制
+     * @param result
+     * @param messageExt
+     * @return
+     */
     public CompletableFuture<PutMessageStatus> submitReplicaRequest(AppendMessageResult result, MessageExt messageExt) {
+        // 同步主从复制，但是默认是异步
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
             HAService service = this.defaultMessageStore.getHaService();
             if (messageExt.isWaitStoreMsgOK()) {
@@ -1675,6 +1693,14 @@ public class CommitLog {
             return result;
         }
 
+        /**
+         * 往MappedFile中追加消息
+         * @param fileFromOffset
+         * @param byteBuffer
+         * @param maxBlank
+         * @param messageExtBatch, backed up by a byte array
+         * @return
+         */
         public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
             final MessageExtBatch messageExtBatch) {
             byteBuffer.mark();

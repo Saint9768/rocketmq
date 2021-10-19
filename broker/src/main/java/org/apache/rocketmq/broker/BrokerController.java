@@ -231,6 +231,11 @@ public class BrokerController {
         return queryThreadPoolQueue;
     }
 
+    /**
+     * 加载config/.目录下的文件
+     * @return
+     * @throws CloneNotSupportedException
+     */
     public boolean initialize() throws CloneNotSupportedException {
         boolean result = this.topicConfigManager.load();
 
@@ -257,14 +262,17 @@ public class BrokerController {
                 log.error("Failed to initialize", e);
             }
         }
-
+        // 加载存储服务
         result = result && this.messageStore.load();
 
         if (result) {
+            // 加载Netty相关服务
             this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.clientHousekeepingService);
             NettyServerConfig fastConfig = (NettyServerConfig) this.nettyServerConfig.clone();
             fastConfig.setListenPort(nettyServerConfig.getListenPort() - 2);
             this.fastRemotingServer = new NettyRemotingServer(fastConfig, this.clientHousekeepingService);
+
+            // 发送消息线程池
             this.sendMessageExecutor = new BrokerFixedThreadPoolExecutor(
                 this.brokerConfig.getSendMessageThreadPoolNums(),
                 this.brokerConfig.getSendMessageThreadPoolNums(),
@@ -273,6 +281,7 @@ public class BrokerController {
                 this.sendThreadPoolQueue,
                 new ThreadFactoryImpl("SendMessageThread_"));
 
+            // 拉取消息线程池
             this.pullMessageExecutor = new BrokerFixedThreadPoolExecutor(
                 this.brokerConfig.getPullMessageThreadPoolNums(),
                 this.brokerConfig.getPullMessageThreadPoolNums(),
@@ -337,6 +346,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每天记录broker的状态日志
                         BrokerController.this.getBrokerStats().record();
                     } catch (Throwable e) {
                         log.error("schedule record error.", e);
@@ -348,6 +358,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每5秒持久化offset到JSON文件中
                         BrokerController.this.consumerOffsetManager.persist();
                     } catch (Throwable e) {
                         log.error("schedule persist consumerOffset error.", e);
@@ -359,6 +370,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每10s持久化类过滤器
                         BrokerController.this.consumerFilterManager.persist();
                     } catch (Throwable e) {
                         log.error("schedule persist consumer filter error.", e);
@@ -370,6 +382,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每3分钟，清理掉有问题的consumer
                         BrokerController.this.protectBroker();
                     } catch (Throwable e) {
                         log.error("protectBroker error.", e);
@@ -479,7 +492,9 @@ public class BrokerController {
                     log.warn("FileWatchService created error, can't load the certificate dynamically");
                 }
             }
+            // 初始化事务管理器
             initialTransaction();
+            // 初始化权限管理器
             initialAcl();
             initialRpcHooks();
         }
