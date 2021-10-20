@@ -54,20 +54,29 @@ public class RebalancePushImpl extends RebalanceImpl {
          * Fix: inconsistency subscription may lead to consumer miss messages.
          */
         SubscriptionData subscriptionData = this.subscriptionInner.get(topic);
+        // new Version
         long newVersion = System.currentTimeMillis();
         log.info("{} Rebalance changed, also update version: {}, {}", topic, subscriptionData.getSubVersion(), newVersion);
+        // 给subscriptionData设置新的版本
         subscriptionData.setSubVersion(newVersion);
 
+        // 当前MessageQueue的总数量
         int currentQueueCount = this.processQueueTable.size();
+        // 如果MessageQueue的数量不为0，重新计算其限制
         if (currentQueueCount != 0) {
+            // 获取Topic级别的拉取阈值， 默认-1 表示没有限制
             int pullThresholdForTopic = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdForTopic();
+            // 这里表示我们设置了Topic级别的拉取阈值
             if (pullThresholdForTopic != -1) {
+                // 重新计算拉取阈值
                 int newVal = Math.max(1, pullThresholdForTopic / currentQueueCount);
                 log.info("The pullThresholdForQueue is changed from {} to {}",
                     this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdForQueue(), newVal);
+                // 设置新的拉取阈值
                 this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().setPullThresholdForQueue(newVal);
             }
 
+            // 获取Topic级别的消息大小阈值，和拉取阈值一个意思
             int pullThresholdSizeForTopic = this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getPullThresholdSizeForTopic();
             if (pullThresholdSizeForTopic != -1) {
                 int newVal = Math.max(1, pullThresholdSizeForTopic / currentQueueCount);
@@ -78,15 +87,20 @@ public class RebalancePushImpl extends RebalanceImpl {
         }
 
         // notify broker
+        // 发送心跳包，通知一下broker
         this.getmQClientFactory().sendHeartbeatToAllBrokerWithLock();
     }
 
     @Override
     public boolean removeUnnecessaryMessageQueue(MessageQueue mq, ProcessQueue pq) {
+        // 将Queue的消费Offset上报到Broker。
         this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
+        // 移除本地关于这个mq的offset信息
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
+        // 如果是顺序消费，并且是集群消费模式
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
+            // 向Broker释放锁
             try {
                 if (pq.getLockConsume().tryLock(1000, TimeUnit.MILLISECONDS)) {
                     try {
