@@ -312,7 +312,7 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
-                    // 4. 更新当前ProcessQueue，对Consumer和MessageQueue进行负载均衡
+                    // 4. 更新当前Topic下的所有MessageQueue和对应的ProcessQueue信息，比如MessageQueue的新增、删除等操作。
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(
@@ -427,7 +427,7 @@ public abstract class RebalanceImpl {
             }
         }
 
-        // 转到PullRequest拉取消息请求，立即假如到PullMessageService的pullRequestQueue中。
+        // 分配PullRequest拉取消息请求，立即加入到PullMessageService的pullRequestQueue中。
         this.dispatchPullRequest(pullRequestList);
 
         return changed;
