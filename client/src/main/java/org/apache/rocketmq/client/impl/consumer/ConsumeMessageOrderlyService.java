@@ -399,7 +399,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
     }
 
     /**
-     * 顺序消费的逻辑与费顺序消费差不多
+     * 顺序消费的逻辑与非顺序消费差不多
      */
     class ConsumeRequest implements Runnable {
         private final ProcessQueue processQueue;
