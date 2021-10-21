@@ -67,24 +67,33 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 消息存储配置
     private final MessageStoreConfig messageStoreConfig;
-    // CommitLog
+    // CommitLog，文件存储实现类
     private final CommitLog commitLog;
 
+    // 消息队列存储缓存表，按 topic 分组，每个 topic 对应多个队列
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
+    // 消费队列文件ConsumeQueue刷盘服务
     private final FlushConsumeQueueService flushConsumeQueueService;
 
+    // 清理CommitLog文件服务
     private final CleanCommitLogService cleanCommitLogService;
 
+    // 清理ConsumeQueue文件服务
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
+    // 索引文件服务
     private final IndexService indexService;
 
+    // MappedFile文件分配服务
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 根据CommitLog文件构建ConsumeQueue、IndexFile文件
     private final ReputMessageService reputMessageService;
 
+    // 存储高可用服务
     private final HAService haService;
 
     private final ScheduleMessageService scheduleMessageService;
@@ -364,11 +373,13 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private PutMessageStatus checkMessage(MessageExtBrokerInner msg) {
+        // 校验 topic 的长度
         if (msg.getTopic().length() > Byte.MAX_VALUE) {
             log.warn("putMessage message topic length too long " + msg.getTopic().length());
             return PutMessageStatus.MESSAGE_ILLEGAL;
         }
 
+        // 校验属性字符串的长度
         if (msg.getPropertiesString() != null && msg.getPropertiesString().length() > Short.MAX_VALUE) {
             log.warn("putMessage message properties length too long " + msg.getPropertiesString().length());
             return PutMessageStatus.MESSAGE_ILLEGAL;
@@ -391,11 +402,13 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private PutMessageStatus checkStoreStatus() {
+        // 校验消息存储服务是否已经停止
         if (this.shutdown) {
             log.warn("message store has shutdown, so putMessage is forbidden");
             return PutMessageStatus.SERVICE_NOT_AVAILABLE;
         }
 
+        // 如果当前Broker是Slave，则不允许执行写消息操作
         if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
@@ -404,6 +417,7 @@ public class DefaultMessageStore implements MessageStore {
             return PutMessageStatus.SERVICE_NOT_AVAILABLE;
         }
 
+        // 校验消息存储是否可写
         if (!this.runningFlags.isWriteable()) {
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
@@ -415,6 +429,7 @@ public class DefaultMessageStore implements MessageStore {
             this.printTimes.set(0);
         }
 
+        // 校验操作系统页缓存是否繁忙
         if (this.isOSPageCacheBusy()) {
             return PutMessageStatus.OS_PAGECACHE_BUSY;
         }
@@ -490,26 +505,31 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        // 检查消息存储服务状态
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
         }
 
+        // 校验该批消息的topic和properties信息
         PutMessageStatus msgCheckStatus = this.checkMessage(msg);
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return new PutMessageResult(msgCheckStatus, null);
         }
 
         long beginTime = this.getSystemClock().now();
+        // 存储CommitLog
         PutMessageResult result = this.commitLog.putMessage(msg);
         long elapsedTime = this.getSystemClock().now() - beginTime;
         if (elapsedTime > 500) {
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
         }
 
+        // 计算存储花费的时间
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
+            // 如果存储失败，增加存储失败的次数
             this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
         }
 
