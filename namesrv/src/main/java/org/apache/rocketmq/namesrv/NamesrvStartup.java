@@ -49,6 +49,10 @@ public class NamesrvStartup {
     private static Properties properties = null;
     private static CommandLine commandLine = null;
 
+    /**
+     * sh bin/mqnamesrv -n 100.10.100.100:9876
+     * @param args
+     */
     public static void main(String[] args) {
         main0(args);
     }

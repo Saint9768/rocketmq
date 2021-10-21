@@ -56,7 +56,7 @@ public class BrokerStartup {
 
     /**
      * 执行Broker启动命令的时候会进入
-     * 比如：bin/mqbroker -n 106.15.139.143:9876 -c conf/broker.conf autoCreateTopicEnable=true &
+     * 比如：bin/mqbroker -n 100.100.100.100:9876 -c conf/broker.conf autoCreateTopicEnable=true
      * @param args
      */
     public static void main(String[] args) {
@@ -92,42 +92,68 @@ public class BrokerStartup {
         }
     }
 
+    /**
+     * 1. 获取启动参数和命令行中的配置参数，并将其和默认的配置参数进行融合。
+     * 2. 然后使用这些配置对象创建BrokerController，并调用其initialize方法。
+     *
+     * Master和Slave在启动时的区别？
+     *  1. accessMessageInMemoryMaxRatio消息占用内存的比率，超过这个值会进行内存置换，Master默认40%，Slave默认30%。
+     *  2. brokerId机器的角色ID，master：0，Slave：大于0的数。
+     *
+     *  Broker在启动的时候会开三个端口：
+     *   1. 10911 接收消息推送的端口。
+     *   2. 10912 高可用的端口。
+     *   3. 10909 推送消息的VIP端口
+     * @param args
+     * @return
+     */
     public static BrokerController createBrokerController(String[] args) {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
+        // 设置broker的netty客户端的发送缓冲大小，默认是128 kb
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_SNDBUF_SIZE)) {
             NettySystemConfig.socketSndbufSize = 131072;
         }
 
+        // 设置broker的netty客户端的接收缓冲大小，默认是128 kb
         if (null == System.getProperty(NettySystemConfig.COM_ROCKETMQ_REMOTING_SOCKET_RCVBUF_SIZE)) {
             NettySystemConfig.socketRcvbufSize = 131072;
         }
 
         try {
-            //PackageConflictDetect.detectFastjson();
+            // 进行命令行选项解析
             Options options = ServerUtil.buildCommandlineOptions(new Options());
+            // 解析命令栏中的 mqbroker
             commandLine = ServerUtil.parseCmdLine("mqbroker", args, buildCommandlineOptions(options),
                 new PosixParser());
             if (null == commandLine) {
                 System.exit(-1);
             }
 
+            // Broker相关配置
             final BrokerConfig brokerConfig = new BrokerConfig();
-            // 初始化Netty相关内容
+            // 初始化Netty-Server/Client相关配置
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
+            // 是否使用TSL  （TLS是SSL的升级版本，TLS是SSL的标准化后的产物，有1.0 1.1 1.2三个版本）
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
+            // 设置Netty服务端的监听端口
             nettyServerConfig.setListenPort(10911);
+            // 消息存储相关配置
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
 
+            // 如果Broker的角色是Slave
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
+                // 计算消息占用内存大小的比率，比默认的的40%还要少10%，即消息只能占用内存的30%。
                 int ratio = messageStoreConfig.getAccessMessageInMemoryMaxRatio() - 10;
+                //设置消息占用内存大小的比率，如果内存占比超过设定值，那么就进行置换。
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
 
             // 处理args
+            // -c 指定broker的配置文件
             if (commandLine.hasOption('c')) {
                 String file = commandLine.getOptionValue('c');
                 if (file != null) {
@@ -227,6 +253,7 @@ public class BrokerStartup {
                 nettyClientConfig,
                 messageStoreConfig);
             // remember all configs to prevent discard
+            // 将配置信息缓存到Broker端内存中
             controller.getConfiguration().registerConfig(properties);
 
             // 初始化BrokerController todo 这个很重要
@@ -236,6 +263,7 @@ public class BrokerStartup {
                 System.exit(-3);
             }
 
+            // 注册Broker关闭的钩子方法
             Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
                 private volatile boolean hasShutdown = false;
                 private AtomicInteger shutdownTimes = new AtomicInteger(0);
