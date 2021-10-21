@@ -123,9 +123,11 @@ public class BrokerOuterAPI {
         final boolean compressed) {
 
         final List<RegisterBrokerResult> registerBrokerResultList = new CopyOnWriteArrayList<>();
+        // 获取所有的NameServer地址
         List<String> nameServerAddressList = this.remotingClient.getNameServerAddressList();
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
 
+            // 封装心跳包Header
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
             requestHeader.setBrokerAddr(brokerAddr);
             requestHeader.setBrokerId(brokerId);
@@ -134,14 +136,19 @@ public class BrokerOuterAPI {
             requestHeader.setHaServerAddr(haServerAddr);
             requestHeader.setCompressed(compressed);
 
+            // 封装心跳包Body
             RegisterBrokerBody requestBody = new RegisterBrokerBody();
+            // Topic信息
             requestBody.setTopicConfigSerializeWrapper(topicConfigWrapper);
+            // 类过滤器信息
             requestBody.setFilterServerList(filterServerList);
             final byte[] body = requestBody.encode(compressed);
             final int bodyCrc32 = UtilAll.crc32(body);
             requestHeader.setBodyCrc32(bodyCrc32);
+            //等向所有的NameServer都发送完心跳才会即系往下走，即同步发送
             final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
             for (final String namesrvAddr : nameServerAddressList) {
+                // 4个核心线程、10个最大线程，阻塞队列：ArrayBlockingQueue---容量32、有界
                 brokerOuterExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
@@ -162,6 +169,7 @@ public class BrokerOuterAPI {
             }
 
             try {
+                // 超时等待，避免卡死。
                 countDownLatch.await(timeoutMills, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
             }
