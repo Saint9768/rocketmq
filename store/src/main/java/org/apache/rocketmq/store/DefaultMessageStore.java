@@ -162,6 +162,7 @@ public class DefaultMessageStore implements MessageStore {
             this.transientStorePool.init();
         }
 
+        // 启动分配MappedFile文件线程
         this.allocateMappedFileService.start();
 
         this.indexService.start();

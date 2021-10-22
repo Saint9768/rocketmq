@@ -193,8 +193,10 @@ public class MappedFileQueue {
 
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
+        // 获取MappedFile集合中最后一个小标的元素，也就是最后一个MappedFile，todo MappedFile的加载时机
         MappedFile mappedFileLast = getLastMappedFile();
 
+        // 在最后一个MappedFile为空或者已满时，创建文件的偏移量
         if (mappedFileLast == null) {
             createOffset = startOffset - (startOffset % this.mappedFileSize);
         }
@@ -212,6 +214,7 @@ public class MappedFileQueue {
             MappedFile mappedFile = null;
 
             if (this.allocateMappedFileService != null) {
+                // 返回创建的MappedFile
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {
@@ -223,7 +226,9 @@ public class MappedFileQueue {
             }
 
             if (mappedFile != null) {
+                // 如果mappedFiles为空
                 if (this.mappedFiles.isEmpty()) {
+                    // 将本次创建的MappedFile对象标记为队列中第一个创建的文件
                     mappedFile.setFirstCreateInQueue(true);
                 }
                 this.mappedFiles.add(mappedFile);
@@ -244,6 +249,7 @@ public class MappedFileQueue {
 
         while (!this.mappedFiles.isEmpty()) {
             try {
+                // 获取mappedFiles中的最后一个MappedFile文件。
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
                 break;
             } catch (IndexOutOfBoundsException e) {

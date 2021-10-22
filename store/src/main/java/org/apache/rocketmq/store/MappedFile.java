@@ -199,17 +199,20 @@ public class MappedFile extends ReferenceResource {
     /**
      * 往MappedFile中写数据
      * @param messageExt
-     * @param cb
+     * @param cb AppendMessageCallback 往MappedFile中添加消息之后的回调
      * @return
      */
     public AppendMessageResult appendMessagesInner(final MessageExt messageExt, final AppendMessageCallback cb) {
         assert messageExt != null;
         assert cb != null;
 
+        // 当前写操作的位置
         int currentPos = this.wrotePosition.get();
 
         if (currentPos < this.fileSize) {
+            // 创建共享缓冲区
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
+            // 设置缓冲区位置
             byteBuffer.position(currentPos);
             AppendMessageResult result;
             // 写单个消息
@@ -221,6 +224,7 @@ public class MappedFile extends ReferenceResource {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
+            // 增加写啊哦做的位置数值
             this.wrotePosition.addAndGet(result.getWroteBytes());
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
@@ -492,12 +496,14 @@ public class MappedFile extends ReferenceResource {
 
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
+        // 创建一个共享此缓冲区内容的新字节缓冲区
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         int flush = 0;
         long time = System.currentTimeMillis();
         for (int i = 0, j = 0; i < this.fileSize; i += MappedFile.OS_PAGE_SIZE, j++) {
             byteBuffer.put(i, (byte) 0);
             // force flush when flush disk type is sync
+            // 刷盘类型为同步刷盘时强制执行刷盘操作
             if (type == FlushDiskType.SYNC_FLUSH) {
                 if ((i / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE) >= pages) {
                     flush = i;
@@ -505,7 +511,7 @@ public class MappedFile extends ReferenceResource {
                 }
             }
 
-            // prevent gc
+            // 防止GC
             if (j % 1000 == 0) {
                 log.info("j={}, costTime={}", j, System.currentTimeMillis() - time);
                 time = System.currentTimeMillis();
@@ -517,7 +523,7 @@ public class MappedFile extends ReferenceResource {
             }
         }
 
-        // force flush when prepare load finished
+        // 同步刷盘类型时，预加载完成之后，强制刷盘
         if (type == FlushDiskType.SYNC_FLUSH) {
             log.info("mapped file warm-up done, force to disk, mappedFile={}, costTime={}",
                 this.getFileName(), System.currentTimeMillis() - beginTime);

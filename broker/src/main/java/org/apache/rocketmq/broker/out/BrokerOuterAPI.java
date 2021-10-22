@@ -127,7 +127,7 @@ public class BrokerOuterAPI {
         List<String> nameServerAddressList = this.remotingClient.getNameServerAddressList();
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
 
-            // 封装心跳包Header
+            // 封装心跳包Header， 上报到NameServer的类型为RequestCode.REGISTER_BROKER
             final RegisterBrokerRequestHeader requestHeader = new RegisterBrokerRequestHeader();
             requestHeader.setBrokerAddr(brokerAddr);
             requestHeader.setBrokerId(brokerId);
@@ -145,7 +145,7 @@ public class BrokerOuterAPI {
             final byte[] body = requestBody.encode(compressed);
             final int bodyCrc32 = UtilAll.crc32(body);
             requestHeader.setBodyCrc32(bodyCrc32);
-            //等向所有的NameServer都发送完心跳才会即系往下走，即同步发送
+            // 同步发送， 等向所有的NameServer都发送完心跳才会继续往下走
             final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
             for (final String namesrvAddr : nameServerAddressList) {
                 // 4个核心线程、10个最大线程，阻塞队列：ArrayBlockingQueue---容量32、有界
@@ -186,6 +186,7 @@ public class BrokerOuterAPI {
         final byte[] body
     ) throws RemotingCommandException, MQBrokerException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException,
         InterruptedException {
+        // 创建一个命令请求NameServer，Code为RequestCode.REGISTER_BROKER, 用于在NameServer做事件区分。
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.REGISTER_BROKER, requestHeader);
         request.setBody(body);
 

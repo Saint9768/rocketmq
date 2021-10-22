@@ -56,6 +56,7 @@ public class BrokerFastFailure {
             @Override
             public void run() {
                 if (brokerController.getBrokerConfig().isBrokerFastFailureEnable()) {
+                    // 没10分钟清理过期的请求
                     cleanExpiredRequest();
                 }
             }
@@ -63,8 +64,10 @@ public class BrokerFastFailure {
     }
 
     private void cleanExpiredRequest() {
+        // 当出现OS pageCache繁忙时, 只处理生产者生产消息请求
         while (this.brokerController.getMessageStore().isOSPageCacheBusy()) {
             try {
+                // 如果存在生产者生产消息请求
                 if (!this.brokerController.getSendThreadPoolQueue().isEmpty()) {
                     final Runnable runnable = this.brokerController.getSendThreadPoolQueue().poll(0, TimeUnit.SECONDS);
                     if (null == runnable) {
@@ -72,6 +75,7 @@ public class BrokerFastFailure {
                     }
 
                     final RequestTask rt = castRunnable(runnable);
+                    // 返回错误信息，告诉Producer：broker正忙，请稍后重试
                     rt.returnResponse(RemotingSysResponseCode.SYSTEM_BUSY, String.format("[PCBUSY_CLEAN_QUEUE]broker busy, start flow control for a while, period in queue: %sms, size of queue: %d", System.currentTimeMillis() - rt.getCreateTimestamp(), this.brokerController.getSendThreadPoolQueue().size()));
                 } else {
                     break;
@@ -80,15 +84,20 @@ public class BrokerFastFailure {
             }
         }
 
+        // 下面为OS pageCache不繁忙的情况，处理阻塞队列中的请求并返回错误信息
+        //  1. 生产者生成消息请求
         cleanExpiredRequestInQueue(this.brokerController.getSendThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInSendQueue());
 
+        //  2. 消费者拉取消息请求
         cleanExpiredRequestInQueue(this.brokerController.getPullThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInPullQueue());
 
+        //  3. 心跳请求
         cleanExpiredRequestInQueue(this.brokerController.getHeartbeatThreadPoolQueue(),
             this.brokerController.getBrokerConfig().getWaitTimeMillsInHeartbeatQueue());
 
+        //  4. 事务消息结束请求
         cleanExpiredRequestInQueue(this.brokerController.getEndTransactionThreadPoolQueue(), this
             .brokerController.getBrokerConfig().getWaitTimeMillsInTransactionQueue());
     }

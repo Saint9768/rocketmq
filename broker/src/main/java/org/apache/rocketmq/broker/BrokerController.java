@@ -326,7 +326,7 @@ public class BrokerController {
                 log.error("Failed to initialize", e);
             }
         }
-        // 加载消息的日志文件，包括：CommitLog、ConsumeQueue等
+        // 加载消息的日志文件，包括：CommitLog、ConsumeQueue等，todo mappedFile也是在这个时候添加的！
         result = result && this.messageStore.load();
 
         // 加载日志文件成功之后
@@ -408,7 +408,8 @@ public class BrokerController {
                     Executors.newFixedThreadPool(this.brokerConfig.getConsumerManageThreadPoolNums(), new ThreadFactoryImpl(
                             "ConsumerManageThread_"));
 
-            // 为客户端注册需要处理API指令的事件，以及消息发送和消费的回调方法
+            // 注册消息处理器，针对客户端发过来的消息Code，会有对应的处理器进行处理。todo broker和client对接的入口
+            // 针对client的不同消息code注册对应的处理API事件，以及消息发送和消费的回调方法
             this.registerProcessor();
 
             final long initialDelay = UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis();
@@ -945,30 +946,38 @@ public class BrokerController {
 
     public void start() throws Exception {
         if (this.messageStore != null) {
+            // 启动消息存储服务DefaultMessageStore，其会对/store/lock文件加锁，
+            // 以确保在broker运行期间只有一个broker实例操作/store目录
             this.messageStore.start();
         }
 
         if (this.remotingServer != null) {
+            // 启动Netty服务监听10911端口，对外提供服务（消息生产、消费）
             this.remotingServer.start();
         }
 
         if (this.fastRemotingServer != null) {
+            // 监听10909端口
             this.fastRemotingServer.start();
         }
 
         if (this.fileWatchService != null) {
+            // fileWatchService与TLS有关，todo tls解析
             this.fileWatchService.start();
         }
 
         if (this.brokerOuterAPI != null) {
+            // 启动Netty客户端netty，broker使用其向外发送数据，比如：向NameServer上报心跳、topic信息。
             this.brokerOuterAPI.start();
         }
 
         if (this.pullRequestHoldService != null) {
+            // 长轮询机制hold住拉取消息请求的服务
             this.pullRequestHoldService.start();
         }
 
         if (this.clientHousekeepingService != null) {
+            // 每10s检查一遍非活动的连接服务
             this.clientHousekeepingService.start();
         }
 
@@ -977,8 +986,12 @@ public class BrokerController {
         }
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
+            // 处理HA
             startProcessorByHa(messageStoreConfig.getBrokerRole());
+            // 启动定时任务，定时与slave机器同步数据，同步的内容包括配置，消费位移等
             handleSlaveSynchronize(messageStoreConfig.getBrokerRole());
+            // 向所有的nameserver发送本机所有的主题数据；
+            // 包括主题名、读队列个数、写队列个数、队列权限、是否有序等
             this.registerBrokerAll(true, false, true);
         }
 
@@ -987,7 +1000,7 @@ public class BrokerController {
             @Override
             public void run() {
                 try {
-                    // 向NameServer注册Broker
+                    // 定时向NameServer注册Broker，最小每10s。
                     BrokerController.this.registerBrokerAll(true, false, brokerConfig.isForceRegister());
                 } catch (Throwable e) {
                     log.error("registerBrokerAll Exception", e);
@@ -996,10 +1009,12 @@ public class BrokerController {
         }, 1000 * 10, Math.max(10000, Math.min(brokerConfig.getRegisterNameServerPeriod(), 60000)), TimeUnit.MILLISECONDS);
 
         if (this.brokerStatsManager != null) {
+            // Broker信息统计，这个没有具体的实现；所以暂时不用管
             this.brokerStatsManager.start();
         }
 
         if (this.brokerFastFailure != null) {
+            // Broker对请求队列中的请求进行快速失败，返回`Broker繁忙、请稍后重试`信息
             this.brokerFastFailure.start();
         }
 
@@ -1026,6 +1041,7 @@ public class BrokerController {
 
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
         // 序列化当前Broker中的topic信息
+        // 1.得到TopicConfigManager 中维护的topicConfigTable map结构信息，并进行序列化
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
 
         if (!PermName.isWriteable(this.getBrokerConfig().getBrokerPermission())

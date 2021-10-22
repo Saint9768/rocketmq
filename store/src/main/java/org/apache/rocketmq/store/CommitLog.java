@@ -1645,52 +1645,70 @@ public class CommitLog {
                         queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
             }
 
-            // Initialization of storage space
+            // Initialization of storage space 初始化存储空间
             this.resetByteBuffer(msgStoreItemMemory, msgLen);
             // 1 TOTALSIZE
+            // 四节点用来存储消息的总大小
             this.msgStoreItemMemory.putInt(msgLen);
             // 2 MAGICCODE
+            // 四字节用来存储文件结尾空的魔数(类似于String字符串最后留的/0)
             this.msgStoreItemMemory.putInt(CommitLog.MESSAGE_MAGIC_CODE);
             // 3 BODYCRC
+            // 4字节的消息体CRC校验和
             this.msgStoreItemMemory.putInt(msgInner.getBodyCRC());
             // 4 QUEUEID
+            // 4字节的队列ID
             this.msgStoreItemMemory.putInt(msgInner.getQueueId());
             // 5 FLAG
+            // 4字节的Flag
             this.msgStoreItemMemory.putInt(msgInner.getFlag());
             // 6 QUEUEOFFSET
+            // 8字节的队列偏移量
             this.msgStoreItemMemory.putLong(queueOffset);
             // 7 PHYSICALOFFSET
+            // 8字节的物理偏移量
             this.msgStoreItemMemory.putLong(fileFromOffset + byteBuffer.position());
             // 8 SYSFLAG
+            // 4字节的系统标识
             this.msgStoreItemMemory.putInt(msgInner.getSysFlag());
             // 9 BORNTIMESTAMP
+            // 8字节的消息出生时间戳
             this.msgStoreItemMemory.putLong(msgInner.getBornTimestamp());
             // 10 BORNHOST
+            // 消息出生 host 主机
             this.resetByteBuffer(bornHostHolder, bornHostLength);
             this.msgStoreItemMemory.put(msgInner.getBornHostBytes(bornHostHolder));
             // 11 STORETIMESTAMP
+            // 消息存储 host 主机
             this.msgStoreItemMemory.putLong(msgInner.getStoreTimestamp());
             // 12 STOREHOSTADDRESS
             this.resetByteBuffer(storeHostHolder, storeHostLength);
             this.msgStoreItemMemory.put(msgInner.getStoreHostBytes(storeHostHolder));
             // 13 RECONSUMETIMES
+            // 重试次数
             this.msgStoreItemMemory.putInt(msgInner.getReconsumeTimes());
             // 14 Prepared Transaction Offset
+            // 8字节的事务准备偏移量
             this.msgStoreItemMemory.putLong(msgInner.getPreparedTransactionOffset());
             // 15 BODY
+            // 消息长度
             this.msgStoreItemMemory.putInt(bodyLength);
             if (bodyLength > 0)
+                // 消息内容
                 this.msgStoreItemMemory.put(msgInner.getBody());
             // 16 TOPIC
+            // Topic长度
             this.msgStoreItemMemory.put((byte) topicLength);
+            // Topic内容
             this.msgStoreItemMemory.put(topicData);
-            // 17 PROPERTIES
+            // 17 PROPERTIES properties 长度
             this.msgStoreItemMemory.putShort((short) propertiesLength);
             if (propertiesLength > 0)
                 this.msgStoreItemMemory.put(propertiesData);
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
             // Write messages to the queue buffer
+            // 消息写入到缓存区
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,
@@ -1703,6 +1721,7 @@ public class CommitLog {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
                     // The next update ConsumeQueue information
+                    // 下次更新 ConsumeQueue 信息
                     CommitLog.this.topicQueueTable.put(key, ++queueOffset);
                     break;
                 default:
@@ -1726,6 +1745,7 @@ public class CommitLog {
             //physical offset
             long wroteOffset = fileFromOffset + byteBuffer.position();
             // Record ConsumeQueue information
+            // 记录消费队列ConsumeQueue信息
             keyBuilder.setLength(0);
             keyBuilder.append(messageExtBatch.getTopic());
             keyBuilder.append('-');
@@ -1756,6 +1776,7 @@ public class CommitLog {
                 final int msgLen = messagesByteBuff.getInt();
                 final int bodyLen = msgLen - 40; //only for log, just estimate it
                 // Exceeds the maximum message
+                // 判断消息体是否过大
                 if (msgLen > this.maxMessageSize) {
                     CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLen
                             + ", maxMessageSize: " + this.maxMessageSize);
@@ -1763,9 +1784,12 @@ public class CommitLog {
                 }
                 totalMsgLen += msgLen;
                 // Determines whether there is sufficient free space
+                // 是否有足够的可用空间
+                // 因为消息的长度加上文件末尾固定留的长度大于文件最大的剩余空间，所以这里的空间已经不够了，也就是已经到了文件的结尾
                 if ((totalMsgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
+                    // 重置 ByteBuffer
                     this.resetByteBuffer(this.msgStoreItemMemory, 8);
-                    // 1 TOTALSIZE
+                    // 1 TOTALSIZE 总大小
                     this.msgStoreItemMemory.putInt(maxBlank);
                     // 2 MAGICCODE
                     this.msgStoreItemMemory.putInt(CommitLog.BLANK_MAGIC_CODE);
@@ -1773,8 +1797,12 @@ public class CommitLog {
                     //ignore previous read
                     messagesByteBuff.reset();
                     // Here the length of the specially set maxBlank
+                    // 把之前写的消息都清掉
                     byteBuffer.reset(); //ignore the previous appended messages
+                    // 把消息写到给定的ByteBuffer
                     byteBuffer.put(this.msgStoreItemMemory.array(), 0, 8);
+
+                    // 返回 AppendMessageStatus.END_OF_FILE 状态后续会创建新的文件继续写入
                     return new AppendMessageResult(AppendMessageStatus.END_OF_FILE, wroteOffset, maxBlank, msgIdBuilder.toString(), messageExtBatch.getStoreTimestamp(),
                             beginQueueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
                 }

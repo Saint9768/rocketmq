@@ -20,6 +20,9 @@ import java.io.File;
 import org.apache.rocketmq.common.annotation.ImportantField;
 import org.apache.rocketmq.store.ConsumeQueue;
 
+/**
+ * @ImportantField 注解会从broker.conf等配置文件中读取相应属性的值
+ */
 public class MessageStoreConfig {
     //The root directory in which the log data is kept
     @ImportantField
