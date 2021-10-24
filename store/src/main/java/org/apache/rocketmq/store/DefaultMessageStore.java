@@ -134,24 +134,35 @@ public class DefaultMessageStore implements MessageStore {
         this.brokerConfig = brokerConfig;
         this.messageStoreConfig = messageStoreConfig;
         this.brokerStatsManager = brokerStatsManager;
+        // 初始化分配MappedFile文件服务
         this.allocateMappedFileService = new AllocateMappedFileService(this);
+        // 初始化CommitLog存储服务
         if (messageStoreConfig.isEnableDLegerCommitLog()) {
             this.commitLog = new DLedgerCommitLog(this);
         } else {
             this.commitLog = new CommitLog(this);
         }
+        // 初始化消费队列信息
         this.consumeQueueTable = new ConcurrentHashMap<>(32);
 
+        // 初始化 队列文件ConsumeQueue刷盘服务
         this.flushConsumeQueueService = new FlushConsumeQueueService();
+        // 初始化  清理CommitLog文件服务
         this.cleanCommitLogService = new CleanCommitLogService();
+        // 初始化  清理ConsumeQueue文件服务
         this.cleanConsumeQueueService = new CleanConsumeQueueService();
         this.storeStatsService = new StoreStatsService();
+
+        // 初始化  队列索引服务
         this.indexService = new IndexService(this);
+
+        // 初始化  高可用服务，主从复制
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
             this.haService = new HAService(this);
         } else {
             this.haService = null;
         }
+        // 初始化  根据CommitLog文件构建ConsumeQueue、IndexFile文件服务
         this.reputMessageService = new ReputMessageService();
 
         this.scheduleMessageService = new ScheduleMessageService(this);
@@ -165,6 +176,7 @@ public class DefaultMessageStore implements MessageStore {
         // 启动分配MappedFile文件线程
         this.allocateMappedFileService.start();
 
+        // 启动队列索引文件服务， 空实现
         this.indexService.start();
 
         this.dispatcherList = new LinkedList<>();

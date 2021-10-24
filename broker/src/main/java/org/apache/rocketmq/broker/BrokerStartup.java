@@ -108,6 +108,8 @@ public class BrokerStartup {
      * @return
      */
     public static BrokerController createBrokerController(String[] args) {
+        // 1）设置MQ版本号、Netty客户端接送和接收缓存区大小；
+        // MQ版本号
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
         // 设置broker的netty客户端的发送缓冲大小，默认是128 kb
@@ -121,6 +123,7 @@ public class BrokerStartup {
         }
 
         try {
+            // 2）注册命令脚手架；
             // 进行命令行选项解析
             Options options = ServerUtil.buildCommandlineOptions(new Options());
             // 解析命令栏中的 mqbroker
@@ -139,6 +142,8 @@ public class BrokerStartup {
             // 是否使用TSL  （TLS是SSL的升级版本，TLS是SSL的标准化后的产物，有1.0 1.1 1.2三个版本）
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
+
+            // 3）绑定nettyServer的监听端口，即对外提供消息读写服务的端口；
             // 设置Netty服务端的监听端口
             nettyServerConfig.setListenPort(10911);
             // 消息存储相关配置
@@ -152,6 +157,7 @@ public class BrokerStartup {
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);
             }
 
+            // 4）创建四个配置类；并且读取broker.conf配置文件信息，利用反射将properties注入到配置类中
             // 处理args
             // -c 指定broker的配置文件
             if (commandLine.hasOption('c')) {
@@ -163,6 +169,7 @@ public class BrokerStartup {
                     properties.load(in);
 
                     properties2SystemEnv(properties);
+                    // 利用反射将配置文件中的broker信息注入到BrokerConfig 配置类中
                     MixAll.properties2Object(properties, brokerConfig);
                     MixAll.properties2Object(properties, nettyServerConfig);
                     MixAll.properties2Object(properties, nettyClientConfig);
@@ -173,6 +180,7 @@ public class BrokerStartup {
                 }
             }
 
+            // 处理其他命令，注入到BrokerConfig中，比如 -n 命令
             MixAll.properties2Object(ServerUtil.commandLine2Properties(commandLine), brokerConfig);
 
             if (null == brokerConfig.getRocketmqHome()) {
@@ -217,6 +225,7 @@ public class BrokerStartup {
                 brokerConfig.setBrokerId(-1);
             }
 
+            // 高可用端口，10912
             messageStoreConfig.setHaListenPort(nettyServerConfig.getListenPort() + 1);
             LoggerContext lc = (LoggerContext) LoggerFactory.getILoggerFactory();
             JoranConfigurator configurator = new JoranConfigurator();

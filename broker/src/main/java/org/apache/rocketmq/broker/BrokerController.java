@@ -191,19 +191,19 @@ public class BrokerController {
             final NettyClientConfig nettyClientConfig,
             final MessageStoreConfig messageStoreConfig
     ) {
-        // BrokerStartUp中准备的配置信息
+        // BrokerStartup中准备的配置信息
         this.brokerConfig = brokerConfig;
         this.nettyServerConfig = nettyServerConfig;
         this.nettyClientConfig = nettyClientConfig;
         this.messageStoreConfig = messageStoreConfig;
 
-        // Consumer消费进度记录管理类
+        // 管理Consumer消费进度；会读取store/config/consumerOffset.json文件，其内部维护了一个Map结构offsetTable
         this.consumerOffsetManager = new ConsumerOffsetManager(this);
 
-        // 消息Topic维度的管理查询类， 管理Topic和Topic相关的配置关系
+        // 消息Topic维度的管理查询类， 管理Topic和Topic相关的配置关系，  会读取store/config/topics.json
         this.topicConfigManager = new TopicConfigManager(this);
 
-        // Consumer端使用pull的方式向Broker拉取消息请求的处理类
+        // Consumer端使用pull的方式向Broker拉取消息请求的处理类，  关联的业务code 为RequestCode.PULL_MESSAGE
         this.pullMessageProcessor = new PullMessageProcessor(this);
 
         // Consumer使用Push方式的长轮询机制拉取请求时，保存使用，当有消息到达时进行推送处理的类
@@ -212,19 +212,19 @@ public class BrokerController {
         // 有消息到达Broker时的监听器，回调pullRequestHoldService中的notifyMessageArriving()方法
         this.messageArrivingListener = new NotifyMessageArrivingListener(this.pullRequestHoldService);
 
-        // 消费者ID变化监听器
+        // 消费者ID变化监听器，主要监听Consumer的注册和下线的事件
         this.consumerIdsChangeListener = new DefaultConsumerIdsChangeListener(this);
 
         // 消费者管理类按照Group进行分组，对消费者的ID变化进行监听
         this.consumerManager = new ConsumerManager(this.consumerIdsChangeListener);
 
-        // 消费者的过滤器管理类，按照Topic进行分类
+        // 消费者的过滤器管理类，按照Topic进行分类，  会读取store/config/consumerFilter.json
         this.consumerFilterManager = new ConsumerFilterManager(this);
 
         // 生产者管理类， 按照Topic进行分类
         this.producerManager = new ProducerManager();
 
-        // 心跳连接处理类
+        // 心跳连接处理服务， 用于清除不活动的链接。
         this.clientHousekeepingService = new ClientHousekeepingService(this);
 
         // Console控制台获取Broker信息使用
@@ -243,7 +243,9 @@ public class BrokerController {
         this.slaveSynchronize = new SlaveSynchronize(this);
 
         // 各种线程池的阻塞队列
+        // 发送消息线程池队列
         this.sendThreadPoolQueue = new LinkedBlockingQueue<Runnable>(this.brokerConfig.getSendThreadPoolQueueCapacity());
+        // 拉取消息线程池队列
         this.pullThreadPoolQueue = new LinkedBlockingQueue<Runnable>(this.brokerConfig.getPullThreadPoolQueueCapacity());
         this.replyThreadPoolQueue = new LinkedBlockingQueue<Runnable>(this.brokerConfig.getReplyThreadPoolQueueCapacity());
         this.queryThreadPoolQueue = new LinkedBlockingQueue<Runnable>(this.brokerConfig.getQueryThreadPoolQueueCapacity());
@@ -280,12 +282,12 @@ public class BrokerController {
     }
 
     /**
-     * 1. 加载config/.目录下的相关配置文件、日志文件；
+     * 1. 加载服务器config/目录下的所有配置文件、日志文件。比如：Topic相关配置、Consumer消费消息进度情况、Consumer订阅关系、Consumer过滤关系，CommitLog、ConsumeQueue日志文件
      * 2. 启动Broker客户端NettyServer服务，创建一些线程池用于处理各种API请求，比如：消息生成、消息消费等；
      * 3. 注册事件到Broker客户端上，然后将API事件和对应的线程池绑定到一个Processor中；
-     * 4. 启动一些定时任务，比如：每天记录Broker的状态、每5秒持久化offset到JSON文件中、每3分钟清理掉有问题的Consumer；
-     * 5. 初始化一些服务，比如：事务相关的服务、消息权限相关的服务、RPC调用钩子相关服务。 加载方式为Java的SPI；
-     *              SPI是调用方来制定接口规范，提供给外部来实现，调用方在调用时则选择自己需要的外部实现。  从使用上来说，SPI 被框架扩展人员广泛使用。
+     * 4. 启动一些定时任务，比如：每天记录Broker的状态、每5秒持久化offset到JSON文件中、每3分钟清理掉有问题的Consumer、每秒打印Send/Pull/Query队列信息等；
+     * 5. 初始化三个服务，比如：事务相关的服务、消息权限相关的服务、RPC调用钩子相关服务。 加载方式为Java的SPI；
+     * SPI是调用方来制定接口规范，提供给外部来实现，调用方在调用时则选择自己需要的外部实现。  从使用上来说，SPI 被框架扩展人员广泛使用。
      *
      * @return
      * @throws CloneNotSupportedException
@@ -454,7 +456,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
-                        // 每3分钟，清理掉有问题的consumer
+                        // 每3分钟，清理掉有问题的consumer（消费慢的Consumer），但是需要设置disableConsumeIfConsumerReadSlowly参数为TRUE，默认为FALSE。
                         BrokerController.this.protectBroker();
                     } catch (Throwable e) {
                         log.error("protectBroker error.", e);
@@ -466,6 +468,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每秒定时打印Send、Pull、Query、Transaction队列信息
                         BrokerController.this.printWaterMark();
                     } catch (Throwable e) {
                         log.error("printWaterMark error.", e);
@@ -478,6 +481,7 @@ public class BrokerController {
                 @Override
                 public void run() {
                     try {
+                        // 每分钟打印已存在CommitLog中但尚未调度到消费队列的字节数
                         log.info("dispatch behind commit log {} bytes", BrokerController.this.getMessageStore().dispatchBehindBytes());
                     } catch (Throwable e) {
                         log.error("schedule dispatchBehindBytes error.", e);
@@ -485,10 +489,13 @@ public class BrokerController {
                 }
             }, 1000 * 10, 1000 * 60, TimeUnit.MILLISECONDS);
 
+            // 如果NameServer地址不为空
             if (this.brokerConfig.getNamesrvAddr() != null) {
+                // 更新NameServer的地址
                 this.brokerOuterAPI.updateNameServerAddressList(this.brokerConfig.getNamesrvAddr());
                 log.info("Set user specified name server address: {}", this.brokerConfig.getNamesrvAddr());
             } else if (this.brokerConfig.isFetchNamesrvAddrByAddressServer()) {
+                // 如果设置了fetchNamesrvAddrByAddressServer属性（默认关闭），每2分钟定时获取更新NameServer地址
                 this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
                     @Override
@@ -503,6 +510,9 @@ public class BrokerController {
                 }, 1000 * 10, 1000 * 60 * 2, TimeUnit.MILLISECONDS);
             }
 
+            // 在非DLeger模式下
+            // 若是SLAVE，则需要检查是否设置了HA的Master地址
+            // 若设置了Master地址要通过updateHaMasterAddress方法向更新Master地址
             if (!messageStoreConfig.isEnableDLegerCommitLog()) {
                 if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {
                     if (this.messageStoreConfig.getHaMasterAddress() != null && this.messageStoreConfig.getHaMasterAddress().length() >= 6) {
@@ -575,6 +585,9 @@ public class BrokerController {
         return result;
     }
 
+    /**
+     * 这里动态加载了TransactionalMessageService和AbstractTransactionalMessageCheckListener的实现类
+     */
     private void initialTransaction() {
         // 初始化事务消息服务
         this.transactionalMessageService = ServiceProvider.loadClass(ServiceProvider.TRANSACTION_SERVICE_ID, TransactionalMessageService.class);
@@ -593,6 +606,10 @@ public class BrokerController {
         this.transactionalMessageCheckService = new TransactionalMessageCheckService(this);
     }
 
+    /**
+     * 需要设置aclEnable属性，默认关闭
+     * 加载AccessValidator实现类，然后将其包装成RPC钩子，注册到remotingServer和fastRemotingServer中，用于请求的调用validate方法进行ACL权限检查
+     */
     private void initialAcl() {
         if (!this.brokerConfig.isAclEnable()) {
             log.info("The broker dose not enable acl");
@@ -625,7 +642,9 @@ public class BrokerController {
         }
     }
 
-
+    /**
+     * 加载RPCHook的实现类
+     */
     private void initialRpcHooks() {
 
         // 初始化对应的RPC钩子方法
@@ -957,7 +976,7 @@ public class BrokerController {
         }
 
         if (this.fastRemotingServer != null) {
-            // 监听10909端口
+            // 监听10909端口，推送消息的VIP端口
             this.fastRemotingServer.start();
         }
 
@@ -986,7 +1005,7 @@ public class BrokerController {
         }
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
-            // 处理HA
+            // 处理HA，开始事务消息回查线程。
             startProcessorByHa(messageStoreConfig.getBrokerRole());
             // 启动定时任务，定时与slave机器同步数据，同步的内容包括配置，消费位移等
             handleSlaveSynchronize(messageStoreConfig.getBrokerRole());
