@@ -291,7 +291,7 @@ public class ProcessQueue {
                     // ProcessQueue中的消息数量 - 删除的消息数量，即加上removedCnt（是一个负数）
                     msgCount.addAndGet(removedCnt);
 
-                    // 如果还有消息存在，则使用msgTreeMap中的第一消息的offset（即最小offset）作为消费进度
+                    // 如果还有消息存在，则使用msgTreeMap中的第一个消息的offset（即最小offset）作为消费进度
                     if (!msgTreeMap.isEmpty()) {
                         result = msgTreeMap.firstKey();
                     }

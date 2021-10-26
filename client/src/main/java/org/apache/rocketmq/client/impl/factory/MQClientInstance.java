@@ -232,7 +232,7 @@ public class MQClientInstance {
                     if (null == this.clientConfig.getNamesrvAddr()) {
                         this.mQClientAPIImpl.fetchNameServerAddr();
                     }
-                    // 开启请求和响应通道，即远程通信服务，生产者和消费者客户端处理消息发送和消费的API。
+                    // 开启请求和响应通道，即远程通信服务，生产者client处理消息发送 和消费者client处理消息消费的API。
                     this.mQClientAPIImpl.start();
                     /**
                      * 1.定时2min拉取最新的nameServer信息
