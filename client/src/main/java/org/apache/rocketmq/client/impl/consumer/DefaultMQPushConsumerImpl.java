@@ -680,6 +680,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 this.consumeMessageService.start();
 
                 // 向broker注册自己(consumer)
+                // 将consumer放到JVM全局唯一的MQClientInstance中的consumerTable MAP结构中，以供后续Consumer端负载均衡使用
                 boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -1096,6 +1097,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
             if (subTable.containsKey(topic)) {
+                // 更新topic订阅信息时，往rebalanceImpl.topicSubscribeInfoTable增加topic数据
                 this.rebalanceImpl.topicSubscribeInfoTable.put(topic, info);
             }
         }

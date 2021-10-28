@@ -280,7 +280,8 @@ public class MQClientInstance {
             @Override
             public void run() {
                 try {
-                    // 从NameServer中获取信息，进而更新topic路由信息
+                    // 从NameServer中获取信息，进而更新topic路由信息：包括 topic下对应多少个MessageQueue
+                    // 往rebalanceImpl.topicSubscribeInfoTable中添加topic路由信息
                     MQClientInstance.this.updateTopicRouteInfoFromNameServer();
                 } catch (Exception e) {
                     log.error("ScheduledTask updateTopicRouteInfoFromNameServer exception", e);
@@ -639,6 +640,7 @@ public class MQClientInstance {
                                 1000 * 3);
                         if (topicRouteData != null) {
                             for (QueueData data : topicRouteData.getQueueDatas()) {
+                                // 当readQueueNums不等于writeQueueNums时，也只会将readQueueNums赋值给writeQueueNums、readQueueNums
                                 int queueNums = Math.min(defaultMQProducer.getDefaultTopicQueueNums(), data.getReadQueueNums());
                                 data.setReadQueueNums(queueNums);
                                 data.setWriteQueueNums(queueNums);
@@ -649,6 +651,7 @@ public class MQClientInstance {
                     }
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
+                        // 判断Topic的路由信息是否改变
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
                         if (!changed) {
                             changed = this.isNeedUpdateTopicRouteInfo(topic);
@@ -660,6 +663,7 @@ public class MQClientInstance {
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
+                                // 当topic的路由信息改变后，会往brokerAddrTable中添加数据
                                 this.brokerAddrTable.put(bd.getBrokerName(), bd.getBrokerAddrs());
                             }
 
@@ -685,6 +689,7 @@ public class MQClientInstance {
                                     Entry<String, MQConsumerInner> entry = it.next();
                                     MQConsumerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        // 更新 Topic的订阅信息
                                         impl.updateTopicSubscribeInfo(topic, subscribeInfo);
                                     }
                                 }
@@ -894,6 +899,7 @@ public class MQClientInstance {
             return false;
         }
 
+        // todo 这里将消费者放入到consumerTable中
         MQConsumerInner prev = this.consumerTable.putIfAbsent(group, consumer);
         if (prev != null) {
             log.warn("the consumer group[" + group + "] exist already.");
@@ -995,6 +1001,7 @@ public class MQClientInstance {
     }
 
     public void doRebalance() {
+        // 遍历当前JVM中所有的consumer，对每个消费者进行负载均衡。consumerTable由每个Consumer 启动时调用registerConsumer()方法放入数据
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();
             if (impl != null) {

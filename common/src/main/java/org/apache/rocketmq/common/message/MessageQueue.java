@@ -18,6 +18,11 @@ package org.apache.rocketmq.common.message;
 
 import java.io.Serializable;
 
+/**
+ * 是RocketMq的一种数据分片+物理存储机制。
+ * 在创建 Topic 的时候会指定 MessageQueue 的数量，生产者通过算法（默认是均匀分配）来把消息写入不同的 MessageQueue 中。
+ * 某个Broker下某个Topic对应的MessageQueue个数为writeQueueNums个数
+ */
 public class MessageQueue implements Comparable<MessageQueue>, Serializable {
     private static final long serialVersionUID = 6191200464116433425L;
     private String topic;

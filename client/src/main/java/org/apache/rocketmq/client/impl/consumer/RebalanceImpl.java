@@ -43,13 +43,25 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
+    /**
+     *
+     */
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
+    /**
+     * 更新topic路由信息时填充数据，后续每30分钟会更新一次，在MQClientInstance.start()中会启动定时任务执行updateTopicRouteInfoFromNameServer()
+     */
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
             new ConcurrentHashMap<String, Set<MessageQueue>>();
+    /**
+     * consumer.subscribe时填充数据
+     */
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
             new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
     protected MessageModel messageModel;
+    /**
+     * 队列负载策略
+     */
     protected AllocateMessageQueueStrategy allocateMessageQueueStrategy;
     protected MQClientInstance mQClientFactory;
 
@@ -220,7 +232,7 @@ public abstract class RebalanceImpl {
      * @param isOrder 是否为顺序消费
      */
     public void doRebalance(final boolean isOrder) {
-        // 获取consumer本地的缓存
+        // 获取当前consumer本地的缓存：每个Topic和其订阅信息
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
             for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
@@ -248,6 +260,7 @@ public abstract class RebalanceImpl {
         switch (messageModel) {
             // 消息传播方式为 广播模式
             case BROADCASTING: {
+                // todo topicSubscribeInfoTable是在更新Topic路由信息时赋值
                 // 广播模式不需要做负载均衡，当前消费者直接消费所有的队列。
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
                 if (mqSet != null) {
