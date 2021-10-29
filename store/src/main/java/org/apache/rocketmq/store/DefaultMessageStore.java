@@ -136,7 +136,7 @@ public class DefaultMessageStore implements MessageStore {
         this.brokerStatsManager = brokerStatsManager;
         // 初始化分配MappedFile文件服务
         this.allocateMappedFileService = new AllocateMappedFileService(this);
-        // 初始化CommitLog存储服务
+        // 初始化CommitLog存储服务，用来判断是否开启DLegerCommitLog
         if (messageStoreConfig.isEnableDLegerCommitLog()) {
             this.commitLog = new DLedgerCommitLog(this);
         } else {
