@@ -206,17 +206,19 @@ public class MappedFile extends ReferenceResource {
         assert messageExt != null;
         assert cb != null;
 
-        // 当前写操作的位置
+        // 获取当前文件的写入位置
         int currentPos = this.wrotePosition.get();
 
+        // 如果当前文件未写满，则进入追加逻辑
         if (currentPos < this.fileSize) {
             // 创建共享缓冲区
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             // 设置缓冲区位置
             byteBuffer.position(currentPos);
             AppendMessageResult result;
-            // 写单个消息
+
             if (messageExt instanceof MessageExtBrokerInner) {
+                // 写单个消息
                 result = cb.doAppend(this.getFileFromOffset(), byteBuffer, this.fileSize - currentPos, (MessageExtBrokerInner) messageExt);
             } else if (messageExt instanceof MessageExtBatch) {
                 // 批量写
@@ -224,7 +226,7 @@ public class MappedFile extends ReferenceResource {
             } else {
                 return new AppendMessageResult(AppendMessageStatus.UNKNOWN_ERROR);
             }
-            // 增加写啊哦做的位置数值
+            // 增加写操作的位置数量值
             this.wrotePosition.addAndGet(result.getWroteBytes());
             this.storeTimestamp = result.getStoreTimestamp();
             return result;
@@ -505,13 +507,14 @@ public class MappedFile extends ReferenceResource {
             // force flush when flush disk type is sync
             // 刷盘类型为同步刷盘时强制执行刷盘操作
             if (type == FlushDiskType.SYNC_FLUSH) {
+                // 预写的页数 大于等于 配置的最小预热刷盘页数时，强制刷盘
                 if ((i / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE) >= pages) {
                     flush = i;
                     mappedByteBuffer.force();
                 }
             }
 
-            // 防止GC
+            // 避免 GC
             if (j % 1000 == 0) {
                 log.info("j={}, costTime={}", j, System.currentTimeMillis() - time);
                 time = System.currentTimeMillis();

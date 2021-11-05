@@ -70,7 +70,7 @@ public class AllocateMappedFileService extends ServiceThread {
                 this.requestTable.remove(nextFilePath);
                 return null;
             }
-            // 将请求放入请求队列
+            // 将请求放入请求队列，AllocateMappedFileService服务会循环进行MMAP操作，分配MappedFile；注意AllocateMappedFileService是在DefaultMessageStore实例化的时候start的。
             boolean offerOK = this.requestQueue.offer(nextReq);
             if (!offerOK) {
                 log.warn("never expected here, add a request to preallocate queue failed");

@@ -193,7 +193,7 @@ public class MappedFileQueue {
 
     public MappedFile getLastMappedFile(final long startOffset, boolean needCreate) {
         long createOffset = -1;
-        // 获取MappedFile集合中最后一个小标的元素，也就是最后一个MappedFile，todo MappedFile的加载时机
+        // 获取MappedFile集合中最后一个下标的元素，也就是最后一个MappedFile，todo MappedFile的加载时机
         MappedFile mappedFileLast = getLastMappedFile();
 
         // 在最后一个MappedFile为空或者已满时，创建文件的偏移量
@@ -214,7 +214,7 @@ public class MappedFileQueue {
             MappedFile mappedFile = null;
 
             if (this.allocateMappedFileService != null) {
-                // 返回创建的MappedFile
+                // 存放请求并返回新建的 MappedFile
                 mappedFile = this.allocateMappedFileService.putRequestAndReturnMappedFile(nextFilePath,
                     nextNextFilePath, this.mappedFileSize);
             } else {
@@ -438,6 +438,7 @@ public class MappedFileQueue {
             int offset = mappedFile.flush(flushLeastPages);
             long where = mappedFile.getFileFromOffset() + offset;
             result = where == this.flushedWhere;
+            // 更新已经刷新的位置
             this.flushedWhere = where;
             if (0 == flushLeastPages) {
                 this.storeTimestamp = tmpTimeStamp;
