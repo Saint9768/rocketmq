@@ -28,12 +28,12 @@ public class HeartbeatData extends RemotingSerializable {
     // consumer 客户端ID
     private String clientID;
     /**
-     * 生产者数据
+     * 生产者信息
      * 1. groupName
      */
     private Set<ProducerData> producerDataSet = new HashSet<ProducerData>();
     /**
-     * 消费者数据
+     * 消费者信息
      * 1. groupName
      * 2. 消费类型：push/pull
      * 3. 消息传播方式：集群还是广播

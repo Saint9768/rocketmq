@@ -25,17 +25,20 @@ import java.util.Set;
 import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 
 public class ConsumerData {
+    /**
+     * 消费者名称
+     */
     private String groupName;
     /**
      * 消费类型：push/pull
      */
     private ConsumeType consumeType;
     /**
-     * 消息传播方式
+     * 消息传播方式：广播 / 集群消费
      */
     private MessageModel messageModel;
     /**
-     * 从哪开始消费
+     * 从哪开始消费：从一开始偏移量、从最后偏移量、按时间戳消费
      */
     private ConsumeFromWhere consumeFromWhere;
     /**

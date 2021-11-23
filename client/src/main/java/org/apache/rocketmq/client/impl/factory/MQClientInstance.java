@@ -91,7 +91,16 @@ public class MQClientInstance {
     private final int instanceIndex;
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
+    /**
+     * DefaultMQProducerImpl#start()方法 生产者启动时，
+     * 会调用MQClientInstance#registerProducer()方法，将生产者信息填充到producerTable中
+     */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
+
+    /**
+     * DefaultMQPushConsumerImplement#start()方法 消费者启动时，
+     * 会调用MQClientInstance#registerConsumer()方法，将消费者信息填充到consumerTable中。
+     */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
@@ -479,6 +488,8 @@ public class MQClientInstance {
     }
 
     public void sendHeartbeatToAllBrokerWithLock() {
+        // RocketMQ对底层进行通信的`MQClientInstance`进行了复用，即在`同一个jvm`里的不同的Consumer下面使用的都是同一个`MQClientInstance`。
+        // 既然是复用的，那么就可能存在并发，因此这里进行了上锁操作
         if (this.lockHeartbeat.tryLock()) {
             try {
                 // 发送心跳包
@@ -544,7 +555,7 @@ public class MQClientInstance {
     }
 
     private void sendHeartbeatToAllBroker() {
-        // 心跳包--包装类
+        // 心跳包--包装类，主要是Producer和Consumer相关信息
         final HeartbeatData heartbeatData = this.prepareHeartbeatData();
         final boolean producerEmpty = heartbeatData.getProducerDataSet().isEmpty();
         final boolean consumerEmpty = heartbeatData.getConsumerDataSet().isEmpty();
@@ -554,8 +565,9 @@ public class MQClientInstance {
             return;
         }
 
-        // broker列表不为空
+        // broker列表不为空时
         // todo brokerAddrTable是什么时候初始化的？
+        // 1）当topic的路由信息改变后，会往brokerAddrTable中添加数据
         if (!this.brokerAddrTable.isEmpty()) {
             // 统计发送心跳的次数
             long times = this.sendHeartbeatTimesTotal.getAndIncrement();
@@ -571,7 +583,8 @@ public class MQClientInstance {
                         Long id = entry1.getKey();
                         String addr = entry1.getValue();
                         if (addr != null) {
-                            // 消费数据为空时
+                            // 消费数据为空 并且 broker不是Mater节点时，不发送心跳。
+                            // 因为Producer只需要与Mater维护心跳即可
                             if (consumerEmpty) {
                                 // broker不是mater节点
                                 if (id != MixAll.MASTER_ID)
@@ -581,6 +594,7 @@ public class MQClientInstance {
                             try {
                                 // 发送心跳
                                 // todo MQClientAPIImpl是什么时候初始化的？
+                                // 1）实例化MQClientInstance时初始化mQClientAPIImpl
                                 int version = this.mQClientAPIImpl.sendHearbeat(addr, heartbeatData, 3000);
                                 if (!this.brokerVersionTable.containsKey(brokerName)) {
                                     this.brokerVersionTable.put(brokerName, new HashMap<String, Integer>(4));

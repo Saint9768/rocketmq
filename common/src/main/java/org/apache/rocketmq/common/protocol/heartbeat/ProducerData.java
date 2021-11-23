@@ -22,7 +22,7 @@ package org.apache.rocketmq.common.protocol.heartbeat;
 
 public class ProducerData {
     /**
-     * groupName
+     * 生产组名称
      */
     private String groupName;
 
