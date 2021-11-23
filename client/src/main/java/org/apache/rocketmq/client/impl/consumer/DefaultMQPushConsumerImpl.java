@@ -680,7 +680,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 this.consumeMessageService.start();
 
                 // 向broker注册自己(consumer)
-                // 将consumer放到JVM全局唯一的MQClientInstance中的consumerTable MAP结构中，以供后续Consumer端负载均衡使用
+                // 将consumer放到JVM全局唯一的MQClientInstance中的consumerTable MAP结构中，以供后续Consumer端负载均衡、发送心跳使用
                 boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPushConsumer.getConsumerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
