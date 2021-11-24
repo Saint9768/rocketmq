@@ -55,6 +55,7 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
     public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
         throws RemotingCommandException {
         switch (request.getCode()) {
+            // 心跳
             case RequestCode.HEART_BEAT:
                 return this.heartBeat(ctx, request);
             case RequestCode.UNREGISTER_CLIENT:
@@ -82,24 +83,31 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
             request.getVersion()
         );
 
+        // 处理心跳包中的消费者信息
         for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
+            // 获取Broker端的消费组订阅信息
             SubscriptionGroupConfig subscriptionGroupConfig =
                 this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(
                     data.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
+            // 如果Broker端的消费组订阅信息不为空，说明当前可能要修改消费者订阅信息
             if (null != subscriptionGroupConfig) {
+                // 是否通知到所有的消费者 订阅信息变更
                 isNotifyConsumerIdsChangedEnable = subscriptionGroupConfig.isNotifyConsumerIdsChangedEnable();
                 int topicSysFlag = 0;
                 if (data.isUnitMode()) {
                     topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
                 }
+                // 消费失败后的，消息消费重试队列、名为：%RETRY%groupName
                 String newTopic = MixAll.getRetryTopic(data.getGroupName());
+                // 创建消息消费重试队列
                 this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
                     newTopic,
                     subscriptionGroupConfig.getRetryQueueNums(),
                     PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
             }
 
+            // 注册消费者订阅信息到Broker中，并判断订阅信息是否变更
             boolean changed = this.brokerController.getConsumerManager().registerConsumer(
                 data.getGroupName(),
                 clientChannelInfo,
@@ -110,6 +118,7 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
                 isNotifyConsumerIdsChangedEnable
             );
 
+            // 消费者信息发生变更，则打印日志记录
             if (changed) {
                 log.info("registerConsumer info changed {} {}",
                     data.toString(),
@@ -118,7 +127,9 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
             }
         }
 
+        // 处理心跳包中的生产者信息
         for (ProducerData data : heartbeatData.getProducerDataSet()) {
+            // 直接注册producer，并把Producer的ClientChannelInfo保存下来、用于后面与Producer通信
             this.brokerController.getProducerManager().registerProducer(data.getGroupName(),
                 clientChannelInfo);
         }

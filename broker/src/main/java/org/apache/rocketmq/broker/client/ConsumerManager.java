@@ -100,17 +100,21 @@ public class ConsumerManager {
         final Set<SubscriptionData> subList, boolean isNotifyConsumerIdsChangedEnable) {
 
         ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
+        // 消费者初次上报订阅信息时
         if (null == consumerGroupInfo) {
             ConsumerGroupInfo tmp = new ConsumerGroupInfo(group, consumeType, messageModel, consumeFromWhere);
             ConsumerGroupInfo prev = this.consumerTable.putIfAbsent(group, tmp);
             consumerGroupInfo = prev != null ? prev : tmp;
         }
 
+        // 消费者的clientChannel（机器）是否变更
         boolean r1 =
             consumerGroupInfo.updateChannel(clientChannelInfo, consumeType, messageModel,
                 consumeFromWhere);
+        // 消费者的订阅信息是否变更
         boolean r2 = consumerGroupInfo.updateSubscription(subList);
 
+        // 若消费者的机器变更 或 订阅信息变更，则通知所有的消费者实例
         if (r1 || r2) {
             if (isNotifyConsumerIdsChangedEnable) {
                 this.consumerIdsChangeListener.handle(ConsumerGroupEvent.CHANGE, group, consumerGroupInfo.getAllChannel());
@@ -119,6 +123,7 @@ public class ConsumerManager {
 
         this.consumerIdsChangeListener.handle(ConsumerGroupEvent.REGISTER, group, subList);
 
+        // 消费者信息发生变更，则返回true
         return r1 || r2;
     }
 
