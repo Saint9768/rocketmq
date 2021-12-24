@@ -53,7 +53,7 @@ public abstract class RebalanceImpl {
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
             new ConcurrentHashMap<String, Set<MessageQueue>>();
     /**
-     * consumer.subscribe时填充数据
+     * consumer.start()时会做一个copySubscription()操作，将 正常topic的订阅信息 和 重试队列的订阅信息 填充进subscriptionInner
      */
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
             new ConcurrentHashMap<String, SubscriptionData>();

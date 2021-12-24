@@ -106,6 +106,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private PullAPIWrapper pullAPIWrapper;
     private volatile boolean pause = false;
     private boolean consumeOrderly = false;
+    // 真正消费消息的逻辑
     private MessageListener messageListenerInner;
     private OffsetStore offsetStore;
     private ConsumeMessageService consumeMessageService;
@@ -676,7 +677,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     this.consumeMessageService =
                             new ConsumeMessageConcurrentlyService(this, (MessageListenerConcurrently) this.getMessageListenerInner());
                 }
-                // 启动消费服务--定时任务
+                // 启动消费服务--定时任务。
+                // 并发消费模式每15分钟清理过期任务，顺序消费模式每20s持续给group加锁
                 this.consumeMessageService.start();
 
                 // 向broker注册自己(consumer)

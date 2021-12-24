@@ -216,7 +216,7 @@ public class MQClientAPIImpl {
 
     public String fetchNameServerAddr() {
         try {
-            // 实例化MQClientAPIImpl时，会从给topAddressing赋予默认值
+            // 实例化MQClientAPIImpl时，会给topAddressing赋予默认值
             // 大家会发现在本地我们跑的时候，addrs为空，卧槽，不对呀，topAddressing有值啊，来我们去看看fetchNSAddr()方法
             // featchNSAddr()方法中会尝试调用默认的nameServer，只有调通才返回。
             String addrs = this.topAddressing.fetchNSAddr();
