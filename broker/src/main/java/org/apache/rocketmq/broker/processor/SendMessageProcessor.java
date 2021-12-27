@@ -16,12 +16,15 @@
  */
 package org.apache.rocketmq.broker.processor;
 
+import java.io.UnsupportedEncodingException;
 import java.net.SocketAddress;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
+import com.alibaba.fastjson.JSONObject;
 import io.netty.channel.ChannelHandlerContext;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.mqtrace.ConsumeMessageContext;
@@ -85,8 +88,17 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     public CompletableFuture<RemotingCommand> asyncProcessRequest(ChannelHandlerContext ctx,
                                                                   RemotingCommand request) throws RemotingCommandException {
         final SendMessageContext mqtraceContext;
+        String msgBody = null;
+        Date currDate = new Date();
+        try {
+            msgBody = new String(request.getBody(), "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            System.out.println("消息byte[]转String失败！");
+        }
         switch (request.getCode()) {
             case RequestCode.CONSUMER_SEND_MSG_BACK:
+                log.info("Saint Back Message accepted, time is : {}, msg is : {}",currDate , msgBody);
+                System.out.println("Saint Back Message accepted, time is :" + currDate + ", msg is : " +  msgBody);
                 return this.asyncConsumerSendMsgBack(ctx, request);
             default:
                 // 发送消息请求头
@@ -96,6 +108,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
                 }
                 // 构建消息体
                 mqtraceContext = buildMsgContext(ctx, requestHeader);
+                log.info("Saint Message accept, time is : {}, msg is : {}",currDate , msgBody);
+                System.out.println("Saint Message accept, time is :" + currDate + ", msg is : " +  msgBody);
                 // 执行发送消息请求前的钩子函数
                 this.executeSendMessageHookBefore(ctx, request, mqtraceContext);
                 // 批量消息发送

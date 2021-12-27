@@ -214,6 +214,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                                 encoder,
                                 new NettyDecoder(),
                                 new IdleStateHandler(0, 0, nettyServerConfig.getServerChannelMaxIdleTimeSeconds()),
+                                // 这里会将Consumer、Producer的客户端Channel《NettyEvent》保存到NettyEventExecutor的eventQueue队列中
                                 connectionManageHandler,
                                 // serverHandler为真正处理读写请求的地方
                                 serverHandler
@@ -432,6 +433,11 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             super.channelRegistered(ctx);
         }
 
+        /**
+         * Consumer、Producer客户端下线时
+         * @param ctx
+         * @throws Exception
+         */
         @Override
         public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
             final String remoteAddress = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
@@ -445,7 +451,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             log.info("NETTY SERVER PIPELINE: channelActive, the channel[{}]", remoteAddress);
             super.channelActive(ctx);
 
+            // Consumer、Producer客户端上线时会走进这
             if (NettyRemotingServer.this.channelEventListener != null) {
+                // 往NettyRemotingServer的eventQueue中添加客户端链接连接事件
                 NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.CONNECT, remoteAddress, ctx.channel()));
             }
         }
@@ -456,7 +464,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             log.info("NETTY SERVER PIPELINE: channelInactive, the channel[{}]", remoteAddress);
             super.channelInactive(ctx);
 
+            // Consumer、Producer客户端下线时会走进这
             if (NettyRemotingServer.this.channelEventListener != null) {
+                // 往NettyRemotingServer的eventQueue中添加客户端链接关闭事件
                 NettyRemotingServer.this.putNettyEvent(new NettyEvent(NettyEventType.CLOSE, remoteAddress, ctx.channel()));
             }
         }

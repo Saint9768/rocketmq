@@ -16,11 +16,8 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.io.UnsupportedEncodingException;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -143,6 +140,9 @@ public class ProcessQueue {
                 // 把过期消息以延时消息方式重新发给broker，10s之后才能消费。
                 pushConsumer.sendMessageBack(msg, 3);
                 log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
+                String msgBody = new String(msg.getBody(), "UTF-8");
+                Date currDate = new Date();
+                System.out.println("Time is : " + currDate + ", send expire msg back. msgId=" + msg.getMsgId() + ", msgBody=" + msgBody + ", queueId=" + msg.getQueueId()  + ",queueOffset=" + msg.getQueueOffset());
                 try {
                     // 获取写锁
                     this.lockTreeMap.writeLock().lockInterruptibly();
@@ -162,6 +162,15 @@ public class ProcessQueue {
                 } catch (InterruptedException e) {
                     log.error("getExpiredMsg exception", e);
                 }
+                msgTreeMap.values().stream().forEach((msgInTree) -> {
+                    try {
+                        System.out.println("Msg OffSet is : " + msgInTree.getQueueOffset() + ", msgBody is : " + new String(msgInTree.getBody(), "UTF-8"));
+                    } catch (UnsupportedEncodingException e) {
+                        System.out.println("遍历msgTreeMap出现异常了！");
+                    }
+                });
+                System.out.println("------------");
+
             } catch (Exception e) {
                 log.error("send expired msg exception", e);
             }

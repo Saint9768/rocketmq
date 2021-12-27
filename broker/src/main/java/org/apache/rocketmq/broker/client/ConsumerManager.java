@@ -90,6 +90,7 @@ public class ConsumerManager {
                     }
                 }
 
+                // 通知所有的Consumer，Consumer Group下的Consumers发生变更
                 this.consumerIdsChangeListener.handle(ConsumerGroupEvent.CHANGE, next.getKey(), info.getAllChannel());
             }
         }

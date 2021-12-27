@@ -16,15 +16,8 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -284,6 +277,11 @@ public abstract class RebalanceImpl {
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
                 // 1. 获取topic下当前ConsumerGroup的所有consumer
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
+
+                System.out.print("The time is : "+ new Date() + ", consumerId is : ");
+                cidAll.stream().forEach( cid -> System.out.print( cid + ", "));
+                System.out.println();
+
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         log.warn("doRebalance, {}, but the topic[{}] not exist.", consumerGroup, topic);

@@ -28,6 +28,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
+import com.alibaba.fastjson.JSONObject;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.Validators;
@@ -354,6 +355,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                         pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
 
                                 // 将拉取到的消息放入到ProcessQueue中
+                                System.out.println("The time is : " + new Date() +"Pull Message is : " + JSONObject.toJSONString(pullResult.getMsgFoundList()));
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
                                 // 消费消息服务开始干活
                                     DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
@@ -587,6 +589,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     }
 
     public synchronized void shutdown(long awaitTerminateMillis) {
+        Date currDate = new Date();
         switch (this.serviceState) {
             case CREATE_JUST:
                 break;
@@ -595,7 +598,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 this.persistConsumerOffset();
                 this.mQClientFactory.unregisterConsumer(this.defaultMQPushConsumer.getConsumerGroup());
                 this.mQClientFactory.shutdown();
-                log.info("the consumer [{}] shutdown OK", this.defaultMQPushConsumer.getConsumerGroup());
+                log.info("the consumer [{}] shutdown OK, time is : {}", this.defaultMQPushConsumer.getConsumerGroup(), currDate);
+                System.out.println("the consumer [" + this.defaultMQPushConsumer.getConsumerGroup() + "] shutdown OK" + "time is : " + currDate);
                 this.rebalanceImpl.destroy();
                 this.serviceState = ServiceState.SHUTDOWN_ALREADY;
                 break;
