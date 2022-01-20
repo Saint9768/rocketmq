@@ -244,6 +244,7 @@ public class TopicConfigManager extends ConfigManager {
         try {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
+                    // 获取topic的配置信息
                     topicConfig = this.topicConfigTable.get(topic);
                     if (topicConfig != null)
                         return topicConfig;
@@ -255,9 +256,12 @@ public class TopicConfigManager extends ConfigManager {
                     topicConfig.setTopicSysFlag(topicSysFlag);
 
                     log.info("create new topic {}", topicConfig);
+                    // 存储重试的topic配置信息
                     this.topicConfigTable.put(topic, topicConfig);
                     createNew = true;
+                    // 修改数据的版本号
                     this.dataVersion.nextVersion();
+                    // 持久化消息
                     this.persist();
                 } finally {
                     this.lockTopicConfigTable.unlock();
@@ -267,6 +271,7 @@ public class TopicConfigManager extends ConfigManager {
             log.error("createTopicInSendMessageBackMethod exception", e);
         }
 
+        // 如果topic配置信息是新创建的，注册到broker集群中
         if (createNew) {
             this.brokerController.registerBrokerAll(false, true, true);
         }
