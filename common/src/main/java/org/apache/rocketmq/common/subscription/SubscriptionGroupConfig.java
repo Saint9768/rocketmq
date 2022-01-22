@@ -30,7 +30,8 @@ public class SubscriptionGroupConfig {
 
     private int retryQueueNums = 1;
 
-    private int retryMaxTimes = 16;
+    // 消费重试次数
+    private int retryMaxTimes = 3;
 
     private long brokerId = MixAll.MASTER_ID;
 

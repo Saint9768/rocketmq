@@ -278,7 +278,7 @@ public abstract class RebalanceImpl {
                 // 1. 获取topic下当前ConsumerGroup的所有consumer
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
 
-                System.out.print("The time is : "+ new Date() + ", consumerId is : ");
+//                System.out.print("The time is : "+ new Date() + ", consumerId is : ");
                 cidAll.stream().forEach( cid -> System.out.print( cid + ", "));
                 System.out.println();
 

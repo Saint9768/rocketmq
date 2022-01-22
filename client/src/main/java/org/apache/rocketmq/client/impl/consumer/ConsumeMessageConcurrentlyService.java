@@ -80,6 +80,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
 
     // 启动定时任务，清理过期消息
     public void start() {
+        log.info("start consume message service, timeout is : {}",  this.defaultMQPushConsumer.getConsumeTimeout());
+        System.out.println("start consume message service");
         this.cleanExpireMsgExecutors.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -253,6 +255,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         final ConsumeConcurrentlyContext context,
         final ConsumeRequest consumeRequest
     ) {
+        // 默认是integer的最大值
         int ackIndex = context.getAckIndex();
 
         if (consumeRequest.getMsgs().isEmpty())
@@ -265,11 +268,13 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 }
                 int ok = ackIndex + 1;
                 int failed = consumeRequest.getMsgs().size() - ok;
+                // 统计数据
                 this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), ok);
                 this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), failed);
                 break;
             case RECONSUME_LATER:
                 ackIndex = -1;
+                // 统计数据
                 this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(),
                     consumeRequest.getMsgs().size());
                 break;
@@ -288,6 +293,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 List<MessageExt> msgBackFailed = new ArrayList<MessageExt>(consumeRequest.getMsgs().size());
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
+                    // 将未ACK的消息重新发送回broker，ackIndex是关键
                     boolean result = this.sendMessageBack(msg, context);
                     if (!result) {
                         System.out.println("The time is : " + new Date() + ", commit msg failed");
@@ -456,7 +462,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 status = ConsumeConcurrentlyStatus.RECONSUME_LATER;
             }
 
-            // 如果消息消费成功，则执行后置的钩子函数
+            // 执行后置的钩子函数
             if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
                 consumeMessageContext.setStatus(status.toString());
                 consumeMessageContext.setSuccess(ConsumeConcurrentlyStatus.CONSUME_SUCCESS == status);

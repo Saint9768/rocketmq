@@ -309,6 +309,8 @@ public class DefaultMessageStore implements MessageStore {
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
             this.haService.start();
+
+            // 开启定任务（Master Broker才会开启），每秒从延时队列中获取到期的数据发送到真是的topic、queue
             this.handleScheduleMessageService(messageStoreConfig.getBrokerRole());
         }
 
@@ -1574,6 +1576,8 @@ public class DefaultMessageStore implements MessageStore {
             if (brokerRole == BrokerRole.SLAVE) {
                 this.scheduleMessageService.shutdown();
             } else {
+
+                // Master类型的broker才会开启
                 this.scheduleMessageService.start();
             }
         }

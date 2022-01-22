@@ -355,10 +355,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                         pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
 
                                 // 将拉取到的消息放入到ProcessQueue中
-                                System.out.println("The time is : " + new Date() +"Pull Message is : " + JSONObject.toJSONString(pullResult.getMsgFoundList()));
+                                System.out.println("The time is : " + new Date() + "Pull Message is : " + JSONObject.toJSONString(pullResult.getMsgFoundList()));
+                                log.info("Pull Message is : {}", JSONObject.toJSONString(pullResult.getMsgFoundList()));
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
                                 // 消费消息服务开始干活
-                                    DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
+                                DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
                                         pullResult.getMsgFoundList(),
                                         processQueue,
                                         pullRequest.getMessageQueue(),
@@ -551,6 +552,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         try {
             String brokerAddr = (null != brokerName) ? this.mQClientFactory.findBrokerAddressInPublish(brokerName)
                     : RemotingHelper.parseSocketAddressAddr(msg.getStoreHost());
+            // 点进去
             this.mQClientFactory.getMQClientAPIImpl().consumerSendMessageBack(brokerAddr, msg,
                     this.defaultMQPushConsumer.getConsumerGroup(), delayLevel, 5000, getMaxReconsumeTimes());
         } catch (Exception e) {

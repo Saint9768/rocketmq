@@ -22,6 +22,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
+import com.alibaba.fastjson.JSONObject;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.ServiceThread;
@@ -65,7 +66,9 @@ public class PullMessageService extends ServiceThread {
     public void executePullRequestImmediately(final PullRequest pullRequest) {
         try {
             // 将PullRequest对象放入到pullRequestQueue（一个LinkedBlockingQueue阻塞队列中）
+            log.info("add pullRequest is : {}", JSONObject.toJSON(pullRequest));
             this.pullRequestQueue.put(pullRequest);
+            log.info("pullRequestQueue is : {}", JSONObject.toJSON(pullRequestQueue));
         } catch (InterruptedException e) {
             log.error("executePullRequestImmediately pullRequestQueue.put", e);
         }

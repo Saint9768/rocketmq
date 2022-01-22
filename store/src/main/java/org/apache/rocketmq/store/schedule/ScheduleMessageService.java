@@ -320,6 +320,7 @@ public class ScheduleMessageService extends ConfigManager {
 
                                         if (putMessageResult != null
                                             && putMessageResult.getPutMessageStatus() == PutMessageStatus.PUT_OK) {
+                                            log.info("send msg to real topic: {} from schedule topic: {}", msgInner.getTopic() ,msgExt.getTopic());
                                             continue;
                                         } else {
                                             // XXX: warn and notify me
