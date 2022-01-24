@@ -140,10 +140,10 @@ public class ProcessQueue {
 
                 // 把过期消息以延时消息方式重新发给broker，10s之后才能消费。
                 pushConsumer.sendMessageBack(msg, 3);
-                log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
+//                log.info("send expire msg back. topic={}, msgId={}, storeHost={}, queueId={}, queueOffset={}", msg.getTopic(), msg.getMsgId(), msg.getStoreHost(), msg.getQueueId(), msg.getQueueOffset());
                 String msgBody = new String(msg.getBody(), "UTF-8");
                 Date currDate = new Date();
-                System.out.println("Time is : " + currDate + ", send expire msg back. msgId=" + msg.getMsgId() + ", msgBody=" + msgBody + ", queueId=" + msg.getQueueId()  + ",queueOffset=" + msg.getQueueOffset());
+//                System.out.println("Time is : " + currDate + ", send expire msg back. msgId=" + msg.getMsgId() + ", msgBody=" + msgBody + ", queueId=" + msg.getQueueId()  + ",queueOffset=" + msg.getQueueOffset());
                 try {
                     // 获取写锁
                     this.lockTreeMap.writeLock().lockInterruptibly();
@@ -211,7 +211,7 @@ public class ProcessQueue {
                 msgCount.addAndGet(validMsgCnt);
 
                 // msgTreeMap不为空(含有消息)，并且不是正在消费状态
-                // // 这个值在放消息的时候会设置为true，在顺序消费模式，取不到消息则设置为false
+                // consuming这个值在放消息的时候会设置为true；在顺序消费模式，取不到消息则设置为false
                 if (!msgTreeMap.isEmpty() && !this.consuming) {
                     // 将ProcessQueue置为正在被消费状态
                     // 有消息，且为未消费状态，则顺序消费模式可以消费

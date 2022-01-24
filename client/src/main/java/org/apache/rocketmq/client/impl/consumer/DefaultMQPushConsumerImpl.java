@@ -355,10 +355,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                         pullRequest.getMessageQueue().getTopic(), pullResult.getMsgFoundList().size());
 
                                 // 将拉取到的消息放入到ProcessQueue中
-                                System.out.println("The time is : " + new Date() + "Pull Message is : " + JSONObject.toJSONString(pullResult.getMsgFoundList()));
-                                log.info("Pull Message is : {}", JSONObject.toJSONString(pullResult.getMsgFoundList()));
+//                                System.out.println("The time is : " + new Date() + "Pull Message is : " + JSONObject.toJSONString(pullResult.getMsgFoundList()));
+//                                log.info("Pull Message is : {}", JSONObject.toJSONString(pullResult.getMsgFoundList()));
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
-                                // 消费消息服务开始干活
+
+                                // 消费消息服务开始干活（真正消费消息的地方）
                                 DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
                                         pullResult.getMsgFoundList(),
                                         processQueue,
