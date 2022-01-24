@@ -68,10 +68,13 @@ public abstract class ConfigManager {
     public abstract void decode(final String jsonString);
 
     public synchronized void persist() {
+        // 读取offsetTable缓存的延迟队列的值
         String jsonString = this.encode(true);
         if (jsonString != null) {
+            // 读取delayOffset.json的文件地址
             String fileName = this.configFilePath();
             try {
+                // 持久化到delayOffset.json文件中
                 MixAll.string2File(jsonString, fileName);
             } catch (IOException e) {
                 log.error("persist file " + fileName + " exception", e);
