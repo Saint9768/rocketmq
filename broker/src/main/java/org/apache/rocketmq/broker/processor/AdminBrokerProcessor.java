@@ -151,6 +151,7 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
         RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
             case RequestCode.UPDATE_AND_CREATE_TOPIC:
+                // 创建或更新topic信息
                 return this.updateAndCreateTopic(ctx, request);
             case RequestCode.DELETE_TOPIC_IN_BROKER:
                 return this.deleteTopic(ctx, request);
@@ -263,7 +264,9 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
         }
 
         TopicConfig topicConfig = new TopicConfig(topic);
+        // topic的写队列数量
         topicConfig.setReadQueueNums(requestHeader.getReadQueueNums());
+        // topic的读队列数量
         topicConfig.setWriteQueueNums(requestHeader.getWriteQueueNums());
         topicConfig.setTopicFilterType(requestHeader.getTopicFilterTypeEnum());
         topicConfig.setPerm(requestHeader.getPerm());

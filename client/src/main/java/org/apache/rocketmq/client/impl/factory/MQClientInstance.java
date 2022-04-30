@@ -649,18 +649,23 @@ public class MQClientInstance {
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
+                    // 如果本地存在生产者
                     if (isDefault && defaultMQProducer != null) {
+                        // 从NameServer获取Topic的路由信息（读写队列的个数）
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                                 1000 * 3);
                         if (topicRouteData != null) {
                             for (QueueData data : topicRouteData.getQueueDatas()) {
                                 // 当readQueueNums不等于writeQueueNums时，也只会将readQueueNums赋值给writeQueueNums、readQueueNums
+                                // 并且此处限制readQueueNums的最大数量只能为defaultTopicQueueNums（默认为4），可以在topics.json中修改
                                 int queueNums = Math.min(defaultMQProducer.getDefaultTopicQueueNums(), data.getReadQueueNums());
                                 data.setReadQueueNums(queueNums);
                                 data.setWriteQueueNums(queueNums);
                             }
                         }
                     } else {
+
+                        // 从服务端获取topic的路由信息（读写队列个数）
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
                     if (topicRouteData != null) {
@@ -697,6 +702,7 @@ public class MQClientInstance {
 
                             // Update sub info
                             {
+                                // 一个QueueData对应一个MessageQueue
                                 Set<MessageQueue> subscribeInfo = topicRouteData2TopicSubscribeInfo(topic, topicRouteData);
                                 Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
                                 while (it.hasNext()) {

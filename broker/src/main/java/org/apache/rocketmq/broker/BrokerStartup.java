@@ -151,7 +151,8 @@ public class BrokerStartup {
 
             // 如果Broker的角色是Slave
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
-                // 计算消息占用内存大小的比率，比默认的的40%还要少10%，即消息只能占用内存的30%。
+                // 计算消息占用内存大小的比率，比默认的40%还要少10%，即消息只能占用内存的30%。
+                // memory表示RocketMQ消息常驻内存的大小，超过该大小，RocketMQ会将旧的消息置换回磁盘
                 int ratio = messageStoreConfig.getAccessMessageInMemoryMaxRatio() - 10;
                 //设置消息占用内存大小的比率，如果内存占比超过设定值，那么就进行置换。
                 messageStoreConfig.setAccessMessageInMemoryMaxRatio(ratio);

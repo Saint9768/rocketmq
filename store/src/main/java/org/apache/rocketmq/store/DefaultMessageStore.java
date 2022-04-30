@@ -289,6 +289,8 @@ public class DefaultMessageStore implements MessageStore {
             }
             log.info("[SetReputOffset] maxPhysicalPosInLogicQueue={} clMinOffset={} clMaxOffset={} clConfirmedOffset={}",
                     maxPhysicalPosInLogicQueue, this.commitLog.getMinOffset(), this.commitLog.getMaxOffset(), this.commitLog.getConfirmOffset());
+
+            // 设置构建ConsumeQueue、IndexFile时CommitLog中起始消息的Offset
             this.reputMessageService.setReputFromOffset(maxPhysicalPosInLogicQueue);
             // 启动解析CommitLog构建ConsumeQueue、IndexFile文件的服务
             this.reputMessageService.start();
@@ -1260,6 +1262,8 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public ConsumeQueue findConsumeQueue(String topic, int queueId) {
+
+        // 1、先从consumeQueueTable中查询topic对应的ConsumeQueueMap；如果未找到，便会为Topic创建一个并存放到表中。
         ConcurrentMap<Integer, ConsumeQueue> map = consumeQueueTable.get(topic);
         if (null == map) {
             ConcurrentMap<Integer, ConsumeQueue> newMap = new ConcurrentHashMap<Integer, ConsumeQueue>(128);
@@ -1271,6 +1275,8 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        // 2、从Topic的ConcurrentMap中，根据QueueId，查询ConsumeQueue;如果未找到，也是new一个新的ConsumeQueue，存放到Map中。
+        // todo ConsumeQueue便是此时被创建的
         ConsumeQueue logic = map.get(queueId);
         if (null == logic) {
             ConsumeQueue newLogic = new ConsumeQueue(
@@ -1561,7 +1567,9 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     public void putMessagePositionInfo(DispatchRequest dispatchRequest) {
+        // 1、根据消息的topic以及消息所属的ConsumeQueueId，找到对应的ConsumeQueue；不存在则new一个
         ConsumeQueue cq = this.findConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
+        // 2、把消息在CommitLog中的offset、size、hashCode放入到ConsumeQueue中
         cq.putMessagePositionInfoWrapper(dispatchRequest);
     }
 
@@ -1622,10 +1630,13 @@ public class DefaultMessageStore implements MessageStore {
         public void dispatch(DispatchRequest request) {
             final int tranType = MessageSysFlag.getTransactionValue(request.getSysFlag());
             switch (tranType) {
+                // 非事务消息和已提交的事务消息，触发构建ConsumerQueue的操作
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
                     DefaultMessageStore.this.putMessagePositionInfo(request);
                     break;
+
+                // 未提交的事务消息或者已经回滚的事务消息，不做任何操作
                 case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
                     break;
@@ -1981,11 +1992,14 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private void doReput() {
+            // reputFromOffset最小只能置为CommitLog中的minOffset，记录了本次需要拉取的消息在CommitLog中的偏移；
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
                         this.reputFromOffset, DefaultMessageStore.this.commitLog.getMinOffset());
                 this.reputFromOffset = DefaultMessageStore.this.commitLog.getMinOffset();
             }
+
+            // commitLog中还有消息需要构建到ConsumeQueue和IndexFile中时
             for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
 
                 if (DefaultMessageStore.this.getMessageStoreConfig().isDuplicationEnable()
@@ -1993,6 +2007,7 @@ public class DefaultMessageStore implements MessageStore {
                     break;
                 }
 
+                // 1、根据reputFromOffset从CommitLog中获取到存储的消息；
                 // 获取 offset位置的 MappedBuffer
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
@@ -2001,14 +2016,19 @@ public class DefaultMessageStore implements MessageStore {
                         this.reputFromOffset = result.getStartOffset();
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+
+                            // 2、从byteBuffer中一条条的读取消息
                             DispatchRequest dispatchRequest =
                                     DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+
+                                    // 2、核心逻辑：通知ConsumeQueue / IndexFile更新消息信息
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
+                                    // Broker角色不是从、并且消息存储模式是长轮询
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                             && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         // 有消息写入CommitLog时，调用messageArrivingListener的arriving()方法通知消费者
@@ -2018,8 +2038,10 @@ public class DefaultMessageStore implements MessageStore {
                                                 dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
 
+                                    // 3、更新reputFromOffset
                                     this.reputFromOffset += size;
                                     readSize += size;
+                                    // Broker角色是从的情况，统计已经操作的topic的消息个数、和消息大小
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
                                         DefaultMessageStore.this.storeStatsService
                                                 .getSinglePutMessageTopicTimesTotal(dispatchRequest.getTopic()).incrementAndGet();

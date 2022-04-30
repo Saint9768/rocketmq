@@ -377,24 +377,35 @@ public class ConsumeQueue {
     }
 
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
+        // 最多重试30次
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
         for (int i = 0; i < maxRetries && canWrite; i++) {
+
+            // 包装存储信息
             long tagsCode = request.getTagsCode();
+
+            // 如果配置中启动了ConsumeQueue扩展类型，则为ConsumerQueue构建扩展索引ConsumeQueueExt
             if (isExtWriteEnable()) {
+                // CqExtUnit由部分组成，分别是：写入bitMap、消息保存时间、实际的消息Tag的hashCode;
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                 cqExtUnit.setFilterBitMap(request.getBitMap());
                 cqExtUnit.setMsgStoreTime(request.getStoreTimestamp());
                 cqExtUnit.setTagsCode(request.getTagsCode());
 
+                // 写入之后返回扩展索引刚写入的偏移地址
                 long extAddr = this.consumeQueueExt.put(cqExtUnit);
+                // 扩展索引的地址最大只能为Integer.MIN_VALUE - 1L，
                 if (isExtAddr(extAddr)) {
+                    // 此时ConsumerQueue中tagsCode保存的值是扩展索引的偏移地址。
                     tagsCode = extAddr;
                 } else {
                     log.warn("Save consume queue extend fail, So just save tagsCode! {}, topic:{}, queueId:{}, offset:{}", cqExtUnit,
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+
+            // 真正写入消息偏移信息的地方
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
@@ -425,19 +436,24 @@ public class ConsumeQueue {
     private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
         final long cqOffset) {
 
+        // 1、判断消息是否已经被处理过
+        // maxPhysicOffset记录了下一个可能会在ConsumeQueue更新的消息在CommitLog中的偏移量
         if (offset + size <= this.maxPhysicOffset) {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
             return true;
         }
 
+        // 2、初始存储偏移量所用的内存
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);
         this.byteBufferIndex.putInt(size);
         this.byteBufferIndex.putLong(tagsCode);
 
-        final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 
+        // 3、获取此次存储消息偏移量 所用的MappedFile（CommitLog在磁盘的物理体现）
+        // CQ_STORE_UNIT_SIZE = 20个字节，每条ConsumeQueue的记录固定为20字节。
+        final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
@@ -470,6 +486,8 @@ public class ConsumeQueue {
                     );
                 }
             }
+
+            // 更新maxPhysicOffset，并将ByteBuffer中的消息偏移信息追加写到MappedFile中。
             this.maxPhysicOffset = offset + size;
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
