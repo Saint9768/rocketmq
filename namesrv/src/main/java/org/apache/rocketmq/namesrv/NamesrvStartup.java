@@ -159,7 +159,9 @@ public class NamesrvStartup {
             System.exit(-3);
         }
 
+        // 注册JVM钩子函数
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
+            // 如果代码中使用了线程池，这是一种优雅的停机方式：在JVM进程关闭之前，先将线程池关闭，及时释放资源。
             @Override
             public Void call() throws Exception {
                 controller.shutdown();
@@ -167,6 +169,7 @@ public class NamesrvStartup {
             }
         }));
 
+        // 启动NameServer服务器，以监听Broker、Producer的网络请求。
         controller.start();
 
         return controller;

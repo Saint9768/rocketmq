@@ -100,7 +100,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
                 return queryBrokerTopicConfig(ctx, request);
             case RequestCode.REGISTER_BROKER:
                 Version brokerVersion = MQVersion.value2Version(request.getVersion());
-                // 3.0 之后支持类过滤器
+                // 3.0 之后支持类过滤器, 4.4版本已弃用
                 if (brokerVersion.ordinal() >= MQVersion.Version.V3_0_11.ordinal()) {
                     return this.registerBrokerWithFilterServer(ctx, request);
                 } else {

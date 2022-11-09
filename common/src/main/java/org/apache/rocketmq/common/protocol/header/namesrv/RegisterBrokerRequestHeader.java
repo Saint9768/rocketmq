@@ -31,6 +31,7 @@ public class RegisterBrokerRequestHeader implements CommandCustomHeader {
     private String brokerAddr;
     @CFNotNull
     private String clusterName;
+    // 主节点地址，初次请求时，该值为空，从节点向NameServer注册后返回。
     @CFNotNull
     private String haServerAddr;
     @CFNotNull
