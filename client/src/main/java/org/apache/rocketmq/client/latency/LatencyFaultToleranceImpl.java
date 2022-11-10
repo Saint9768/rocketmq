@@ -50,6 +50,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
     @Override
     public boolean isAvailable(final String name) {
+        // FaultItem为失败条目（规避规则条目）
         final FaultItem faultItem = this.faultItemTable.get(name);
         if (faultItem != null) {
             return faultItem.isAvailable();
@@ -98,7 +99,9 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
 
     class FaultItem implements Comparable<FaultItem> {
         private final String name;
+        // 消息发送的延迟时间
         private volatile long currentLatency;
+        // 规避故障开始的时间
         private volatile long startTimestamp;
 
         public FaultItem(final String name) {

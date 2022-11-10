@@ -184,7 +184,9 @@ public class MQClientInstance {
         } else {
             List<QueueData> qds = route.getQueueDatas();
             Collections.sort(qds);
+            // 遍历路由信息的所有QueueData信息
             for (QueueData qd : qds) {
+                // 如果队列没有写权限，继续遍历下一个QueueData。
                 if (PermName.isWriteable(qd.getPerm())) {
                     BrokerData brokerData = null;
                     for (BrokerData bd : route.getBrokerDatas()) {
@@ -198,12 +200,15 @@ public class MQClientInstance {
                         continue;
                     }
 
+                    // 据brokerName找到的BrokerData信息（所有的Broker地址），如果为空 或者 没有主节点，继续遍历下一个QueueData
                     if (!brokerData.getBrokerAddrs().containsKey(MixAll.MASTER_ID)) {
                         continue;
                     }
 
+                    // 根据写队列的个数，以 topic + 序号（0、1、、2、3）创建MessageQueue。
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
                         MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
+                        // 填充topicPublishInfo的List<MessageQueue>，完成消息发送的路由查找。
                         info.getMessageQueueList().add(mq);
                     }
                 }
@@ -649,9 +654,9 @@ public class MQClientInstance {
             if (this.lockNamesrv.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     TopicRouteData topicRouteData;
-                    // 如果本地存在生产者
+                    // 第一步：如果isDefault为true，则使用默认主题查询
                     if (isDefault && defaultMQProducer != null) {
-                        // 从NameServer获取Topic的路由信息（读写队列的个数）
+                        // 从NameServer获取默认Topic的路由信息（读写队列的个数），将其赋值给当前路由信息。
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                                 1000 * 3);
                         if (topicRouteData != null) {
@@ -665,12 +670,12 @@ public class MQClientInstance {
                         }
                     } else {
 
-                        // 从服务端获取topic的路由信息（读写队列个数）
+                        // 如果isDefault为false，则使用参数topic查询，如果未查询到路由信息，则返回false，表示路由信息未变化。
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
-                        // 判断Topic的路由信息是否改变
+                        // 第二步：如果找到路由信息，与本地缓存中的路由信息对比，判断Topic的路由信息是否改变，如果未发生改变，则直接返回false。
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
                         if (!changed) {
                             changed = this.isNeedUpdateTopicRouteInfo(topic);
@@ -682,12 +687,19 @@ public class MQClientInstance {
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
-                                // 当topic的路由信息改变后，会往brokerAddrTable中添加数据
+                                // 第三步：路由信息改变时，需要更新MQClientInstance中的Broker地址缓存表brokerAddrTable。
                                 this.brokerAddrTable.put(bd.getBrokerName(), bd.getBrokerAddrs());
                             }
 
                             // Update Pub info
                             {
+                                // 针对消息生产者，将topicRouteData中的List<QueueData> 转换成TopicPublishInfo中的List<MessageQueue>列表。
+                                /**
+                                 * 1) 遍历路由信息的所有QueueData信息:
+                                 * 2) 如果队列没有写权限，继续遍历下一个QueueData;
+                                 * 3) 据brokerName找到的BrokerData信息（所有的Broker地址），如果为空 或者 没有主节点，继续遍历下一个QueueData；
+                                 * 4) 根据写队列的个数，以 topic + 序号（0、1、、2、3）创建MessageQueue；填充topicPublishInfo的List<MessageQueue>，完成消息发送的路由查找
+                                 */
                                 TopicPublishInfo publishInfo = topicRouteData2TopicPublishInfo(topic, topicRouteData);
                                 publishInfo.setHaveTopicRouterInfo(true);
                                 Iterator<Entry<String, MQProducerInner>> it = this.producerTable.entrySet().iterator();
@@ -695,6 +707,7 @@ public class MQClientInstance {
                                     Entry<String, MQProducerInner> entry = it.next();
                                     MQProducerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        // 填充topicPublishInfo的List<MessageQueue>，完成消息发送的路由查找
                                         impl.updateTopicPublishInfo(topic, publishInfo);
                                     }
                                 }

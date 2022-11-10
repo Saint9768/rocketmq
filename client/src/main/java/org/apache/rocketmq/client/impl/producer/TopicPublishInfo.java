@@ -67,9 +67,13 @@ public class TopicPublishInfo {
     }
 
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
+        // 如果不是重试发送消息，则默认使用sendWhichQueue自增 对当前路由表中消息队列个数取模的方式，轮询获取到一个MessageQueue。
         if (lastBrokerName == null) {
             return selectOneMessageQueue();
         } else {
+            // 如果是重试发送消息，则上次发送消息失败时MessageQueue所在的Broker，否则有可能再次失败。
+            // 之所以这么搞，是因为Broker不可用后，NameServer每10s才能感知到Broker不可用，NameServer检测到Broker不可用后，也不会通知Producer，而是需要Producer每30s更新一次路由信息。
+            //    也就是说Producer最慢要40s才能感知到Broker最新的路由信息。
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int index = this.sendWhichQueue.getAndIncrement();
                 int pos = Math.abs(index) % this.messageQueueList.size();
@@ -80,6 +84,7 @@ public class TopicPublishInfo {
                     return mq;
                 }
             }
+            // 如果只有一个Broker，只能往这个broker中的队列发送消息，就正常轮询选择一个MessageQueue
             return selectOneMessageQueue();
         }
     }
