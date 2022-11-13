@@ -356,6 +356,9 @@ public class MappedFileQueue {
         if (null == mfs)
             return 0;
 
+        // 从倒数第二个文件开始遍历，计算文件的最大存活时间（即文件的最后一次更新时间 + 文件存活时间（默认72小时）），如果当前时间大于文件的最大存活时间、或需要立即删除文件；
+        // 执行MappedFile#destroy()方法清理占用的资源，清理成功后，将文件加入到待删除文件列表；线程睡眠100ms（这个100ms是同一次清理过期文件时，两个要删除文件之间间隔时间）；同样的操作再删除第二个过期文件。
+        // 最后将过期文件统一从磁盘中删除。
         int mfsLength = mfs.length - 1;
         int deleteCount = 0;
         List<MappedFile> files = new ArrayList<MappedFile>();

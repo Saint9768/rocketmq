@@ -348,6 +348,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.start();
 
         this.createTempFile();
+        // 增加过期MappedFile删除操作
         this.addScheduleTask();
         this.shutdown = false;
     }
@@ -1385,6 +1386,9 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
+        /**
+         * 默认每隔10s执行一次的定时任务：检查是都需要清除过期文件。
+         */
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -1434,7 +1438,9 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     private void cleanFilesPeriodically() {
+        // 清除CommitLog
         this.cleanCommitLogService.run();
+        // 清除ConsumeQueue，它俩公用一套删除机制。
         this.cleanConsumeQueueService.run();
     }
 
@@ -1704,6 +1710,7 @@ public class DefaultMessageStore implements MessageStore {
 
         public void run() {
             try {
+                // 删除过期文件
                 this.deleteExpiredFiles();
 
                 this.redeleteHangedFile();
@@ -1714,10 +1721,25 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // fileReservedTime：文件保留时间，如果超过这个时间，则认为文件是过期文件，可以被删除。
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // deleteCommitLogFilesInterval：删除物理文件的间隔时间；在一次清除过期文件过程中，可能需要被删除的文件不止一个，该值指定两次删除文件的间隔时间（默认100ms）。
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // destroyMapedFileIntervalForcibly：在删除过期文件时，如果该文件被其他线程占用（引用次数大于0，比如读取消息）；
+            // 此时会阻止此次删除任务；并且在第一次试图删除该文件时记录当前时间戳，destroyMapedFileIntervalForcibly表示第一次拒绝删除之后能保留文件的最大时间（默认2分钟）。
+            // 超过这个时间，会将引用次数设置为负数，强制删除文件。
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
+            /**
+             * 执行删除过期文件有三种情况：
+             *     1）执行删除文件的时间点到了，RocketMQ通过deleteWhen设置每天在固定时间执行一次删除过期文件操作，默认是凌晨4点。
+             *     2）检查磁盘文件是否充足，如果磁盘空间不充足，表示应该触发过期文件删除操作。
+             *         1> CommitLog文件、ConsumeQueue文件<font color=blue>所在磁盘分区超过设置的最大阈值（范围只会在[10, 95]）</font>
+             *         2> 磁盘分区使用率超过阈值diskSpaceWarningLevelRatio（默认为0.9），并且会将设置磁盘不可写，拒绝写入新消息；
+             *         3> 磁盘分区使用率超过阈值diskSpaceCleanForciblyRatio（默认为0.85），不会拒绝写入新消息。
+             *            磁盘分区空间使用率低于diskSpaceCleanForciblyRatio，将恢复磁盘可写。
+             *     3）预留的手工触发机制，但是目前RocketMQ还没有封装手工触发文件删除的命令。
+             */
             boolean timeup = this.isTimeToDelete();
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
@@ -1774,12 +1796,16 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private boolean isSpaceToDelete() {
+            // diskMaxUsedSpaceRatio：表示CommitLog文件、ConsumeQueue文件所在磁盘分区的最大使用量（范围只会在[10, 95]），超过这个值，则需要立即删除过期文件。
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
+            // 表示是否需要理解执行清除过期文件操作。
             cleanImmediately = false;
 
             {
+                // commitlog文件
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(getStorePathPhysic());
+                // diskSpaceWarningLevelRatio：默认为0.9，如果磁盘分区使用率超过该阈值，将设置磁盘不可写，此时会拒绝写入新消息，也会立即执行过期文件删除。
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
@@ -1787,6 +1813,8 @@ public class DefaultMessageStore implements MessageStore {
                     }
 
                     cleanImmediately = true;
+                // diskSpaceCleanForciblyRatio：默认0.85，如果磁盘分区使用率超过该阈值，建议立即执行过期文件删除，但不会拒绝写入新消息。
+                    // 如果磁盘使用率低于diskSpaceCleanForciblyRatio，将恢复磁盘可写。
                 } else if (physicRatio > diskSpaceCleanForciblyRatio) {
                     cleanImmediately = true;
                 } else {
@@ -1803,6 +1831,7 @@ public class DefaultMessageStore implements MessageStore {
             }
 
             {
+                // 整体存储文件
                 String storePathLogics = StorePathConfigHelper
                         .getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);

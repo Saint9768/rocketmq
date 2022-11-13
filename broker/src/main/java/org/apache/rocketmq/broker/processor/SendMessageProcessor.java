@@ -340,6 +340,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             // 发送普通消息
             putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
         }
+        // Completable框架，异步接收消息同步到从节点的结果
         return handlePutMessageResultFuture(putMessageResult, response, request, msgInner, responseHeader, mqtraceContext, ctx, queueIdInt);
     }
 
