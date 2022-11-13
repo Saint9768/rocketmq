@@ -210,27 +210,47 @@ public class DefaultMessageStore implements MessageStore {
         boolean result = true;
 
         try {
+            /**
+             *  第一步：加载时首先会判断上一次退出是否正常
+             *      1) 其实现机制是Broker启动时会创建${ROCKET_HOME}/store/abort文件，在退出时会注册JVM钩子函数删除abort文件。
+             *      2) 如果下一次启动Broker时存在abort文件，说明Broker是异常退出的；CommitLog与ConsumeQueue数据有可能不一致，需要进行修复。
+             */
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            // 第二步：加载延时队列
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
 
             // load Commit Log
-            // 加载commitLog
+            /**
+             * 第三步：加载CommitLog文件
+             *     1）加载${ROCKET_HOME}/store/commitlog目录下的所有文件并按照文件名排序。
+             *     2）如果文件与配置文件的单个文件大小不一致，将忽略该目录下的所有文件，然后创建MappedFile对象。
+             *     3）将wrotePosition、flushedPosition、committedPosition三个指针都设置为文件大小。
+             *     3）将wrotePosition、flushedPosition、committedPosition三个指针都设置为文件大小。
+             */
             result = result && this.commitLog.load();
 
             // load Consume Queue
-            // 加载ConsumeQueue
+            /**
+             * 第四步：加载消息消费队列ConsumeQueue；**
+             *    1）加载${ROCKET_HOME}/store/consumequeue目录下的所有目录，获取该Broker存储的所有topic；
+             *    2）然后遍历每个topic目录，获取该主题下的所有消息消费队列，最后分别加载每个消息消费队列的文件，构建ConsumeQueue对象；
+             *    3）主要是为了初始化ConsumeQueue的topic、queueId、storePath、mappedFileSize属性。
+             */
             result = result && this.loadConsumeQueue();
 
             if (result) {
+                // 第五步：加载并存储checkPoint文件
                 this.storeCheckpoint =
                         new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
+                // 第六步：加载Index文件，如果上次Broker是异常退出，并且Index文件刷盘时间小于该文件最大的消息时间戳，则该文件将立即销毁
                 this.indexService.load(lastExitOK);
 
+                // 第七步：根据Broker是否为正常停止，执行不同的ConsumeQueue、Index文件增量数据恢复策略（异常停止时、正常停止时）
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -1479,11 +1499,14 @@ public class DefaultMessageStore implements MessageStore {
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
         if (lastExitOK) {
+            // 正常停止Broker
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
+            // 异常停止Broker
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
 
+        // 第八步：恢复ConsumeQueue文件后，在CommitLog实例中保存每个消息消费队列ConsumeQueue当前存储的最大逻辑偏移量
         this.recoverTopicQueueTable();
     }
 
@@ -2013,8 +2036,7 @@ public class DefaultMessageStore implements MessageStore {
                     break;
                 }
 
-                // 1、根据reputFromOffset从CommitLog中获取到存储的消息；
-                // 获取 offset位置的 MappedBuffer
+                // 第一步：获取到CommitLog中从reputFromOffset偏移量开始的全部数据
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
                     try {
@@ -2023,7 +2045,7 @@ public class DefaultMessageStore implements MessageStore {
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
 
-                            // 2、从byteBuffer中一条条的读取消息
+                            // 2、从byteBuffer中一条条的读取消息，构建DispatchRequest请求对象
                             DispatchRequest dispatchRequest =
                                     DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();

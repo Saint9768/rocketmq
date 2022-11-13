@@ -47,12 +47,14 @@ public class MessageStoreConfig {
 
     // CommitLog flush interval
     // flush data to disk
+    // flushIntervalCommitLog：FlushRealTimeService线程任务运行间隔时间
     @ImportantField
     private int flushIntervalCommitLog = 500;
 
     // Only used if TransientStorePool enabled
     // flush data to FileChannel
     @ImportantField
+    // CommitRealTimeService线程间隔时间，默认200ms
     private int commitIntervalCommitLog = 200;
 
     /**
@@ -63,6 +65,7 @@ public class MessageStoreConfig {
 
     // Whether schedule flush,default is real-time
     @ImportantField
+    // flushCommitLogTimed 默认为false，表示使用await方法等待，如果为true，表示使用Thread.sleep方法等待。
     private boolean flushCommitLogTimed = false;
     // ConsumeQueue flush interval
     private int flushIntervalConsumeQueue = 1000;
@@ -90,6 +93,7 @@ public class MessageStoreConfig {
     // This check adds some overhead,so it may be disabled in cases seeking extreme performance.
     private boolean checkCRCOnRecover = true;
     // How many pages are to be flushed when flush CommitLog
+    // flushCommitLogLeastPages：一次刷盘任务至少包含页数（默认4页），如果待写入数据不足，将忽略本次刷盘任务
     private int flushCommitLogLeastPages = 4;
     // How many pages are to be committed when commit data to file
     private int commitCommitLogLeastPages = 4;
@@ -97,7 +101,9 @@ public class MessageStoreConfig {
     private int flushLeastPagesWhenWarmMapedFile = 1024 / 4 * 16;
     // How many pages are to be flushed when flush ConsumeQueue
     private int flushConsumeQueueLeastPages = 2;
+    // flushCommitLogThoroughInterval：两次真实刷盘的最大间隔时间，默认10s。
     private int flushCommitLogThoroughInterval = 1000 * 10;
+    // 两次真实提交的最大间隔时间，默认200ms。
     private int commitCommitLogThoroughInterval = 200;
     private int flushConsumeQueueThoroughInterval = 1000 * 60;
     @ImportantField

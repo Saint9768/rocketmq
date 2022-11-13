@@ -227,6 +227,13 @@ public class ConsumeQueue {
 
         this.maxPhysicOffset = phyOffet;
         long maxExtAddr = 1;
+        /**
+         * 遍历所有的ConsumeQueue：
+         *     1）如果文件的尾部偏移量 小于 processOffset则跳过该文件；
+         *     2）如果尾部的偏移量 大于 processOffset，进一步比较processOffset和文件开始偏移量；
+         *         * 如果MappedFile文件中的起始偏移量 大于 processOffset，说明存在冗余的无效文件，释放当前MappedFile占用的资源（MappedByteBuffer 和 FileChannel)、并删除文件。
+         *         * 否者说明当前文件包含有效偏移量，设置MappedFile的wrotePosition、committedPosition、flushedPosition。
+         */
         while (true) {
             MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
             if (mappedFile != null) {
@@ -242,6 +249,8 @@ public class ConsumeQueue {
                     long tagsCode = byteBuffer.getLong();
 
                     if (0 == i) {
+                        // 如果MappedFile文件中的起始偏移量 大于 processOffset，说明存在冗余的无效文件，释放当前MappedFile占用的资源（MappedByteBuffer 和 FileChannel)、并删除文件。
+                        //
                         if (offset >= phyOffet) {
                             this.mappedFileQueue.deleteLastMappedFile();
                             break;

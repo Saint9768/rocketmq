@@ -199,16 +199,19 @@ public class IndexService {
     }
 
     public void buildIndex(DispatchRequest req) {
+        // 1) 获取或创建Index文件，并获取所有文件最大的物理偏移量。
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
             long endPhyOffset = indexFile.getEndPhyOffset();
             DispatchRequest msg = req;
             String topic = msg.getTopic();
             String keys = msg.getKeys();
+            // 如果该消息的物理偏移量小于index文件中的物理偏移量，则说明是重复数据，忽略本次索引构建。
             if (msg.getCommitLogOffset() < endPhyOffset) {
                 return;
             }
 
+            // 如果是事务消息的回滚也忽略本次索引构建。
             final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
@@ -219,6 +222,7 @@ public class IndexService {
                     return;
             }
 
+            // 2) 如果消息的唯一键不为空，则添加到哈希索引中，以便加速根据伪意见检索消息。
             if (req.getUniqKey() != null) {
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
@@ -227,6 +231,7 @@ public class IndexService {
                 }
             }
 
+            // 3）构建索引建，RocketMQ支持为同一个消息建立多个索引，多个索引用空格分开
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
