@@ -90,7 +90,7 @@ public class DefaultMessageStore implements MessageStore {
     // MappedFile文件分配服务
     private final AllocateMappedFileService allocateMappedFileService;
 
-    // 根据CommitLog文件构建ConsumeQueue、IndexFile文件
+    // CommitLog消息分发，根据CommitLog文件构建ConsumeQueue、IndexFile文件
     private final ReputMessageService reputMessageService;
 
     // 存储高可用服务
@@ -100,6 +100,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private final StoreStatsService storeStatsService;
 
+    // 消息堆内存缓存
     private final TransientStorePool transientStorePool;
 
     private final RunningFlags runningFlags = new RunningFlags();
@@ -108,15 +109,19 @@ public class DefaultMessageStore implements MessageStore {
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("StoreScheduledThread"));
     private final BrokerStatsManager brokerStatsManager;
+    // 在消息拉取长轮询模式下的消息达到 的监听器
     private final MessageArrivingListener messageArrivingListener;
+    // Broker配置属性
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
 
+    // 文件刷盘检查点
     private StoreCheckpoint storeCheckpoint;
 
     private AtomicLong printTimes = new AtomicLong(0);
 
+    // 文件转发请求
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
     private RandomAccessFile lockFile;
@@ -524,6 +529,7 @@ public class DefaultMessageStore implements MessageStore {
 
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        // 第一步：校验Broker和消息内容；Broker必须是要是Master、必须可写；Topic的长度不能超过127字节（2^7 - 1）、消息属性长度不能超过32767字节（2^15-1）。
         // 检查消息存储服务状态
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {

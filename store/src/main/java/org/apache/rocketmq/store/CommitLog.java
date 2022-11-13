@@ -826,6 +826,8 @@ public class CommitLog {
         // TRANSACTION_NOT_TYPE 为普通消息、TRANSACTION_COMMIT_TYPE 为事务消息提交类型
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
                 || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
+            // 第二步：延时消息处理：如果消息的延时级别大于0，也就说明当前消息是延时消息；将消息的原topic、queue存到消息的属性中，
+            // 用延时消息的topic：`SCHEDULE_TOPIC_XXXX`，消息队列ID（<font color=blue>queueId = delayTimeLevel - 1</font>）更新原先消息的主体的和队列。
             // Delay Delivery
             // 获取消息延迟发送级别
             if (msg.getDelayTimeLevel() > 0) {
@@ -862,21 +864,25 @@ public class CommitLog {
         long elapsedTimeInLock = 0;
 
         MappedFile unlockMappedFile = null;
-        // 获取CommitLog的最后一个MappedFile
+        // 第三步：获取CommitLog的最后一个MappedFile
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
-        // 写消息前加锁，写消息是串行的。默认使用CAS机制实现的PutMessageSpinLock()。可以通过修改
+        // 第四步：写消息前加锁，写消息是串行的。默认使用CAS机制实现的PutMessageSpinLock()。可以通过修改
         putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
         try {
             long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
             this.beginTimeInLock = beginLockTimestamp;
 
+            /**
+             *  第五步：设置消息的存储时间，保证全局有序性**。如果没有mappedFile文件存在，说明是第一次发送消息，创建新的MappedFile文件，并添加到mappedFileQueue中。
+             *         如果文件创建失败，则说明磁盘空间不足 或 权限不够，抛出异常`CREATE_MAPEDFILE_FAILED`。
+             */
             // Here settings are stored timestamp, in order to ensure an orderly
             // global
             // 设置存储时间戳，保证全局有序性
             msg.setStoreTimestamp(beginLockTimestamp);
 
-            // 如果文件不存在，或者文件已满，创建新的MappedFile文件，并添加到mappedFileQueue中
+            // 如果文件不存在，或者磁盘已满，创建新的MappedFile文件，并添加到mappedFileQueue中
             if (null == mappedFile || mappedFile.isFull()) {
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
             }
@@ -886,7 +892,10 @@ public class CommitLog {
                 return new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null);
             }
 
-            // 追加消息
+            /**
+             * 第六步：将消息追加到MappedFile中；
+             *     1）
+             */
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
@@ -1585,6 +1594,7 @@ public class CommitLog {
             ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
             this.resetByteBuffer(storeHostHolder, storeHostLength);
+            // 1）创建全局唯一消息ID，消息ID一共16字节：4字节的IP、4字节的端口号、8字节的消息物理偏移量
             String msgId;
             if ((sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0) {
                 msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
@@ -1598,6 +1608,8 @@ public class CommitLog {
             keyBuilder.append('-');
             keyBuilder.append(msgInner.getQueueId());
             String key = keyBuilder.toString();
+            // 2）获取消息在消息队列queue的物理偏移量。一个CommitLog中可能包含多个Queue.
+            //    事务消息需要特殊处理：Prepared 和 Rollback 类型的事务消息不能被消费，不会进入消费队列
             Long queueOffset = CommitLog.this.topicQueueTable.get(key);
             if (null == queueOffset) {
                 queueOffset = 0L;
@@ -1638,10 +1650,11 @@ public class CommitLog {
 
             final int bodyLength = msgInner.getBody() == null ? 0 : msgInner.getBody().length;
 
+            // 3）计算消息的总长度；校验消息属性不能超过32767（2^ 15 -1）个字节，消息大小默认不能超过4M（可以通过StoreConfig配置）
             final int msgLen = calMsgLength(msgInner.getSysFlag(), bodyLength, topicLength, propertiesLength);
 
             // Exceeds the maximum message
-            // 判断消息大小是否超过4M(写死的)
+            // 判断消息大小是否超过4M（可以通过StoreConfig配置）
             if (msgLen > this.maxMessageSize) {
                 CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLength
                         + ", maxMessageSize: " + this.maxMessageSize);
@@ -1649,7 +1662,10 @@ public class CommitLog {
             }
 
             // Determines whether there is sufficient free space
-            // 确定是否有足够的可用空间
+            /**
+             * 4）判断CommitLog文件是否有足够的空间写**，<font color=blue>每个CommitLog文件要留出8个字节：高4个字节保存当前文件的剩余空间、低4个字节存储魔数`CommitLog.BLANK_MAGIC_CODE`</font>。
+             *    如果空间不够，就返回`AppendMessageStatus.END_OF_FILE`，<font color=red>Broker会再创建一个新的MappedFile来存储该消息。</font>
+             */
             // 如果 消息长度 + 文件末尾固定empty长度 > 文件空闲空间， 则写失败。
             if ((msgLen + END_FILE_MIN_BLANK_LENGTH) > maxBlank) {
                 // 充值ByteBuffer
@@ -1716,9 +1732,12 @@ public class CommitLog {
             // Write messages to the queue buffer -- 消息写入到缓存区
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
+            // 5) 将消息内存存储到ByteBuffer中**，然后创建`AppendMessageResult`并返回，
+            // <font color=blue>此时只是将消息存在MappedFile对应的内存映射Buffer中，并没有写入到磁盘。</font>
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,
                     msgInner.getStoreTimestamp(), queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
 
+            // 6）更新消息队列的逻辑偏移量，即ConsumeQueue中的偏移量。 事务消息的PREPARED状态和Rollback状态不更新
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
