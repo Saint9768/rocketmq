@@ -78,7 +78,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         this.cleanExpireMsgExecutors = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("CleanExpireMsgScheduledThread_"));
     }
 
-    // 启动定时任务，清理过期消息
+    // 并发消费启动一个默认15分钟执行一次的定时任务 用于清理消费超时的消息；
     public void start() {
         log.info("start consume message service, timeout is : {}",  this.defaultMQPushConsumer.getConsumeTimeout());
         System.out.println("start consume message service");

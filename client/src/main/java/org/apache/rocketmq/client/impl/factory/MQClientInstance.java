@@ -251,7 +251,7 @@ public class MQClientInstance {
                     /**
                      * 1.定时2min拉取最新的nameServer信息
                      * 2.默认定时30秒拉取最新的broker和topic路由信息（可配置）
-                     * 3.默认定时30s向broker发送心跳包（可配置）
+                     * 3.默认定时30s清理下线的Broker、向broker发送心跳包（可配置）
                      * 4.默认定时5s持久化consumer的offset（可配置）
                      * 5.定时1分钟，动态调整线程池线程数量
                      */

@@ -1721,7 +1721,7 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
-            // fileReservedTime：文件保留时间，如果超过这个时间，则认为文件是过期文件，可以被删除。
+            // fileReservedTime：文件保留时间（默认72小时），如果超过这个时间，则认为文件是过期文件，可以被删除。
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
             // deleteCommitLogFilesInterval：删除物理文件的间隔时间；在一次清除过期文件过程中，可能需要被删除的文件不止一个，该值指定两次删除文件的间隔时间（默认100ms）。
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();

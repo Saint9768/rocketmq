@@ -624,7 +624,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 // 1、校验一堆配置，例如：consumerGroup配置规则、消费模式不能为null(默认为集群消费--CLUSTERING)、并发消费线程数量。
                 this.checkConfig();
 
-                // 2、copy订阅关系，监听重投队列%RETRY%TOPIC。
+                // 2、 构建topic主题订阅信息SubscriptionData，并将其加入到`RebalanceImpl`的订阅消息`subscriptionInner`中；
+                // 监听重投主题%RETRY%consumeGroup。
                 this.copySubscription();
 
                 // 3、如果消息传播方式是集群模式，将消费者实例的name 修改为PID
@@ -907,10 +908,12 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 }
             }
 
+            // 如果没有自定义消息监听器，则设置默认消息监听器MessageListener；
             if (null == this.messageListenerInner) {
                 this.messageListenerInner = this.defaultMQPushConsumer.getMessageListener();
             }
 
+            // 集群消费模式下，订阅消息重投主题`%RETRY%consumerGroup`，
             switch (this.defaultMQPushConsumer.getMessageModel()) {
                 case BROADCASTING:
                     break;
