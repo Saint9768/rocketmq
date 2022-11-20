@@ -184,7 +184,7 @@ public class PullAPIWrapper {
              */
             final long brokerSuspendMaxTimeMillis,
             /**
-             * 拉取消息的超时时间
+             * 拉取消息的超时时间，默认30s.
              */
             final long timeoutMillis,
             /**

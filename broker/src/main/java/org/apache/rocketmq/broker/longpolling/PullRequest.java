@@ -23,6 +23,7 @@ import org.apache.rocketmq.store.MessageFilter;
 
 public class PullRequest {
     private final RemotingCommand requestCommand;
+    // 网络通道，通过该通道想消息拉取客户端发送响应结果。
     private final Channel clientChannel;
     private final long timeoutMillis;
     private final long suspendTimestamp;

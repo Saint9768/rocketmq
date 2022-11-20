@@ -58,11 +58,15 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
             Long.parseLong(System.getProperty("rocketmq.client.maxTimeConsumeContinuously", "60000"));
     private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
     private final DefaultMQPushConsumer defaultMQPushConsumer;
+    // 顺序消息业务事件类
     private final MessageListenerOrderly messageListener;
+    // 消息消费任务队列
     private final BlockingQueue<Runnable> consumeRequestQueue;
+    // 消息消费线程池
     private final ThreadPoolExecutor consumeExecutor;
     private final String consumerGroup;
     private final MessageQueueLock messageQueueLock = new MessageQueueLock();
+    // 添加消费任务到consumeExecutor延迟调度器
     private final ScheduledExecutorService scheduledExecutorService;
     private volatile boolean stopped = false;
 

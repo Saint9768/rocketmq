@@ -160,16 +160,20 @@ public class RebalancePushImpl extends RebalanceImpl {
             case CONSUME_FROM_LAST_OFFSET_AND_FROM_MIN_WHEN_BOOT_FIRST:
             case CONSUME_FROM_MIN_OFFSET:
             case CONSUME_FROM_MAX_OFFSET:
+            // 从队列最新偏移量开始消费
             case CONSUME_FROM_LAST_OFFSET: {
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
+                // 从磁盘中读取到的消费进度大于0，则直接返回。
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 }
                 // First start,no offset
+                // -1表示该消息队列刚创建，如果topic是系统定义的重试topic，则消费进度设置为0，
                 else if (-1 == lastOffset) {
                     if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         result = 0L;
                     } else {
+                        // 否者获取该消息队列当前最大的物理偏移量，如果获取出现异常，说明当前消费进度文件中存储了错误的偏移量。
                         try {
                             result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
                         } catch (MQClientException e) {
@@ -181,22 +185,29 @@ public class RebalancePushImpl extends RebalanceImpl {
                 }
                 break;
             }
+            // 从头开始消费，
             case CONSUME_FROM_FIRST_OFFSET: {
+                // 从磁盘中读取到的消费进度大于0，则直接返回。
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;
+                // -1表示该消息队列刚创建，消费进度设置为0，
                 } else if (-1 == lastOffset) {
                     result = 0L;
                 } else {
+                    // 说明当前消费进度文件中存储了错误的偏移量。
                     result = -1;
                 }
                 break;
             }
+            // 从消费者启动时间戳对应的消费进度开始消费。
             case CONSUME_FROM_TIMESTAMP: {
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
+                // 从磁盘中读取到的消费进度大于0，则直接返回。
                 if (lastOffset >= 0) {
                     result = lastOffset;
                 } else if (-1 == lastOffset) {
+                    // 如果topic是系统定义的重试topic，则消费进度设置为该消息队列当前最大的物理偏移量，
                     if (mq.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         try {
                             result = this.mQClientFactory.getMQAdminImpl().maxOffset(mq);
@@ -205,6 +216,7 @@ public class RebalancePushImpl extends RebalanceImpl {
                         }
                     } else {
                         try {
+                            // 尝试将消息存储时间戳更新为消费为消费者启动的时间戳，如果能找到则返回找到的偏移量，否则返回0。
                             long timestamp = UtilAll.parseDate(this.defaultMQPushConsumerImpl.getDefaultMQPushConsumer().getConsumeTimestamp(),
                                 UtilAll.YYYYMMDDHHMMSS).getTime();
                             result = this.mQClientFactory.getMQAdminImpl().searchOffset(mq, timestamp);

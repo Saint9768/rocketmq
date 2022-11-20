@@ -405,7 +405,7 @@ public abstract class RebalanceImpl {
         // 遍历所有的MessageQueue，然后构建对应的ProcessQueue给它
         for (MessageQueue mq : mqSet) {
             if (!this.processQueueTable.containsKey(mq)) {
-                // 顺序消费，并且队列没有被锁定成功
+                // 如果是顺序消费模式，并且没有占到队列锁，则直接跳过。等待下次一队列负载在操作。这里会有潜在的消费队列堆积问题。
                 if (isOrder && !this.lock(mq)) {
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
@@ -415,6 +415,15 @@ public abstract class RebalanceImpl {
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
                 // 计算下个要消费的offset
+                /**
+                 * 这三种模式都是先从Broker中获取最新的消费进度，如果消费进度大于0，则直接返回。
+                 *
+                 * <font color=blue>**区别在于如果消费组groupName是新建的，消费进度的取值逻辑不同：**</font>
+                 *
+                 * * CONSUME_FROM_LAST_OFFSET：取该消息队列当前最大的物理偏移量；如果topic为系统定义的重试Topic，则取0；
+                 * * CONSUME_FROM_FIRST_OFFSET：取0；
+                 * * CONSUME_FROM_TIMESTAMP：尝试将消息存储时间戳更新为消费为消费者启动的时间戳，如果能找到则返回找到的偏移量，否者返回0；如果topic为系统定义的重试Topic，则取消息队列当前最大的物理偏移量。
+                 */
                 long nextOffset = this.computePullFromWhere(mq);
                 if (nextOffset >= 0) {
                     // 将当前MessageQueue放入到processQueueTable

@@ -2120,7 +2120,11 @@ public class DefaultMessageStore implements MessageStore {
                                     // Broker角色不是从、并且消息存储模式是长轮询
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                             && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
-                                        // 有消息写入CommitLog时，调用messageArrivingListener的arriving()方法通知消费者
+                                        // **有消息写入CommitLog时，调用messageArrivingListener的arriving()方法通知消费者
+                                        /**
+                                         * 当新消息到达CommitLog文件时，<font color=blue>如果Broker端开启了长轮询模式，并且当前节点角色是主节点，</font>
+                                         * 则调用PullRequestHoldService#`notifyMessageArriving()`方法唤醒挂起线程，判断当前ConsumeQueue最大偏移量是否大于待拉取偏移量，如果大于则拉取消息。
+                                         */
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
                                                 dispatchRequest.getQueueId(), dispatchRequest.getConsumeQueueOffset() + 1,
                                                 dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),

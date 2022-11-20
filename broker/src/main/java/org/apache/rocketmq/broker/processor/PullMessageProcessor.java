@@ -415,9 +415,14 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 // * 未找到消息
                 case ResponseCode.PULL_NOT_FOUND:
 
+                    // ** 长轮询机制，需要Broker端支持挂起，具体由消息拉取请求传入，默认支持。
                     if (brokerAllowSuspend && hasSuspendFlag) {
+                        // 允许Broker暂停的时间，Consumer发送消息拉取请求封装在参数里的，默认15s。
                         long pollingTimeMills = suspendTimeoutMillisLong;
+                        // 默认开启长轮询（longPollingEnable=true）
                         if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                            // 如果未开启长训轮机制，默认会在服务端等待1s（shortPollingTimeMills），再去判断消息是否到达消息队列ConsumeQueue。
+                            // 如果未到达，给Consumer返回响应：PULL_NOT_FOUND，没找到消息。
                             pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
                         }
 
@@ -426,6 +431,20 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         int queueId = requestHeader.getQueueId();
                         PullRequest pullRequest = new PullRequest(request, channel, pollingTimeMills,
                             this.brokerController.getMessageStore().now(), offset, subscriptionData, messageFilter);
+                        /**
+                         * 如果开启了长轮询:
+                         *     1）RocketMQ一方面会每5s检查一次是否有消息到达？一有消息大小，立即通知PullRequest挂起线程PullRequestHoldService验证消息是否是Consumer需要的，
+                         *         如果是则从CommitLog中提取消息并返回到Consumer；
+                         *         否者继续挂起，直到有消息达到，或者达到挂起超时时间；
+                         *             超时时间是Consumer发送消息拉取请求封装在参数里的，推模式默认15s；拉模式默认20s（拉模式已不推荐使用）。
+                         *    2）PullRequest挂起期间，但凡有消息到达，《DefaultMessageStore#ReputMessageService》会准实时（延时1ms）返回响应给Consumer，而不是等到每5s检查一次。
+                         */
+                        // 将创建拉取任务PullRequest并提交到PullRequestHoldService线程中。
+                        /**
+                         * RocketMQ轮询机制由两个线程共同完成；
+                         *     1）PullRequestHoldService：每隔5s重试一次；
+                         *     2）DefaultMessageStore#ReputMessageService：每处理一次重新拉取，线程休眠1s，继续下一次检查。
+                         */
                         this.brokerController.getPullRequestHoldService().suspendPullRequest(topic, queueId, pullRequest);
                         response = null;
                         break;
@@ -564,6 +583,8 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             @Override
             public void run() {
                 try {
+                    // 第四步：再次回到PullMessageProcessor处理消息拉取请求，核心在于设置brokerAllowSuspend为false，表示不支持拉取线程挂起。
+                    // 即：当根据偏移量无法获取到消息时，将不挂起线程并等待新消息的到来，而是直接返回告诉客户端本次消息拉取未找到消息。
                     final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                     if (response != null) {
