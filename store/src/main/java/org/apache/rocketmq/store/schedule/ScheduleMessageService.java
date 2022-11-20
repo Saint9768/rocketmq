@@ -48,19 +48,26 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // 第一次调度时延迟的时间，默认为1s
     private static final long FIRST_DELAY_TIME = 1000L;
+    // 每一个延时级别调度一次后，延迟该时间间隔后再放入调度池，默认100ms
     private static final long DELAY_FOR_A_WHILE = 100L;
+    // 消息发送异常后延迟该时间后再继续参与调度，默认10s
     private static final long DELAY_FOR_A_PERIOD = 10000L;
 
+    // 延时级别
     private final ConcurrentMap<Integer /* level */, Long/* delay timeMillis */> delayLevelTable =
         new ConcurrentHashMap<Integer, Long>(32);
 
+    // 延时级别消息消费进度
     private final ConcurrentMap<Integer /* level */, Long/* offset */> offsetTable =
         new ConcurrentHashMap<Integer, Long>(32);
+    // 默认消息存储器
     private final DefaultMessageStore defaultMessageStore;
     private final AtomicBoolean started = new AtomicBoolean(false);
     private Timer timer;
     private MessageStore writeMessageStore;
+    // 最大消息延迟级别
     private int maxDelayLevel;
 
     public ScheduleMessageService(final DefaultMessageStore defaultMessageStore) {
@@ -110,9 +117,20 @@ public class ScheduleMessageService extends ConfigManager {
         return storeTimestamp + 1000;
     }
 
+    /**
+     * start()方法根据延迟级别创建对应的定时任务，启动定时任务持久化存储延迟消息队列进度。
+     */
     public void start() {
         if (started.compareAndSet(false, true)) {
             this.timer = new Timer("ScheduleMessageTimerThread", true);
+            /**
+             * 第一步：根据延迟队列创建定时任务
+             *     1）遍历所有的延迟级别，根据延迟级别从offsetTable中获取消息队列的消费进度，如果不存在，则使用0。即：每个延迟级别都会对应一个消息消费队列ConsumeQueue。
+             *     2）为每个延迟级别都创建一个定时任务，定时任务第一次启动时，默认都会延迟1s后再执行定时任务。
+             *         从第二次调度开始，才使用相应的延迟时间执行定时任务。延迟级别与消息消费队列的映射关系为：queueId = delayLevel - 1。
+             *         在消息发送时，如果消息的延迟级别delayLevel大于0，则将消息的原topic、queueId存入消息属性，然后修改消息的topic为`SCHEDULE_TOPIC_XXX`，queueId为delayLevel - 1。
+             *              即：将消息转发到延迟队列的相应消费队列中。
+             */
             // delayLevelTable中存放着每个延时级别和其对应的消息offset
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
@@ -128,6 +146,9 @@ public class ScheduleMessageService extends ConfigManager {
                 }
             }
 
+            /**
+             * 第二步：创建一个延时10s启动的定时任务，每10s持久化一次延迟队列的消息消费进度。
+             */
             // 延时10s启动，并且每10s把每一个延迟队列的最大消息偏移量写入到磁盘中
             this.timer.scheduleAtFixedRate(new TimerTask() {
 
@@ -163,6 +184,10 @@ public class ScheduleMessageService extends ConfigManager {
         return this.encode(false);
     }
 
+    /**
+     * 完成延迟消息消费队列消息进度的加载与delayLevelTable数据的构造。
+     * @return
+     */
     public boolean load() {
         boolean result = super.load();
         result = result && this.parseDelayLevel();
@@ -266,6 +291,10 @@ public class ScheduleMessageService extends ConfigManager {
         }
 
         public void executeOnTimeup() {
+            /**
+             * 第一步：根据延迟级别找到topic为SCHEDULE_TOPIC_XXXX的队列；
+             *     1）如果没找到，说明当前不存在该延时级别的消息，忽略本次任务，根据延时级别创建下一次调度任务。
+             */
             // 根据延迟级别找到topic为SCHEDULE_TOPIC_XXXX的队列（队列的ID 为延时级别 - 1）
             ConsumeQueue cq =
                 ScheduleMessageService.this.defaultMessageStore.findConsumeQueue(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC,
@@ -275,11 +304,19 @@ public class ScheduleMessageService extends ConfigManager {
 
             // 找到延时级别对应的队列
             if (cq != null) {
+                /**
+                 * 第二步：根据offset从消息消费队列中获取当前队列中所有有效的消息；
+                 *     1）如果没找到，则更新延时队列的定时任务拉取进度并创建下一次调度任务。
+                 */
                 SelectMappedBufferResult bufferCQ = cq.getIndexBuffer(this.offset);
                 if (bufferCQ != null) {
                     try {
                         long nextOffset = offset;
                         int i = 0;
+                        /**
+                         * 第三步：遍历ConsumeQueue文件中的每一个ConsumeQueue条目，判断是否到消息投递时间，如果到了，则根据消息物理偏移量与消息大小从CommitLog文件中查找消息。
+                         *     1）如果没找到，则更新延时队列的定时任务拉取进度并创建下一次调度任务。
+                         */
                         ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                         for (; i < bufferCQ.getSize(); i += ConsumeQueue.CQ_STORE_UNIT_SIZE) {
                             // 消息的commitLog物理偏移量
@@ -321,6 +358,9 @@ public class ScheduleMessageService extends ConfigManager {
 
                                 if (msgExt != null) {
                                     try {
+                                        /**
+                                         * 第四步：解析消息体，取出真实的topic和queue（多为%RETRY% + consumerGroup），清除消息的延迟级别属性`delayLevel`、消息的消费次数属性`reconsumeTimes`依旧会存在
+                                         */
                                         // 解析消息体，取出真实的topic和queue（多为%RETRY% + consumerGroup）
                                         MessageExtBrokerInner msgInner = this.messageTimeup(msgExt);
                                         if (TopicValidator.RMQ_SYS_TRANS_HALF_TOPIC.equals(msgInner.getTopic())) {
@@ -329,6 +369,9 @@ public class ScheduleMessageService extends ConfigManager {
                                             continue;
                                         }
 
+                                        /**
+                                         * 第五步：将消息再次保存到CommitLog中，消息转发到topic对应的消息队列上，供消费者再次消费。
+                                         */
                                         // 将消息写入到commitLog中
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.writeMessageStore
@@ -372,12 +415,15 @@ public class ScheduleMessageService extends ConfigManager {
                                 ScheduleMessageService.this.timer.schedule(
                                     new DeliverDelayedMessageTimerTask(this.delayLevel, nextOffset),
                                     countdown);
-                                // 更新延时队列已消费的消息偏移量
+                                // 更新内存中延时队列已消费的消息偏移量
                                 ScheduleMessageService.this.updateOffset(this.delayLevel, nextOffset);
                                 return;
                             }
                         } // end of for
 
+                        /**
+                         * 第六步：更新延迟队列的消费进度，创建下一次调度任务。
+                         */
                         // 定时任务下一次开始读取延迟队列的offset
                         nextOffset = offset + (i / ConsumeQueue.CQ_STORE_UNIT_SIZE);
                         // 开启一个延时100ms执行的定时任务 消费延时队列
