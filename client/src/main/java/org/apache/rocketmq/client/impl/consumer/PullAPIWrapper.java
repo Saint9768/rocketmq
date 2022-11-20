@@ -155,6 +155,9 @@ public class PullAPIWrapper {
              * 消息订阅子模式，subscribe(topicName, "模式")
              */
             final String subExpression,
+            /**
+             * 消息表达式类型，分为：TAG、SQL92
+             */
             final String expressionType,
             /**
              * 版本
@@ -165,7 +168,7 @@ public class PullAPIWrapper {
              */
             final long offset,
             /**
-             * 拉取的最大消息个数，defaultMQPushConsumer.getPullBatchSize()
+             * 拉取的最大消息个数，defaultMQPushConsumer.getPullBatchSize()，默认32条
              */
             final int maxNums,
             /**
@@ -185,7 +188,7 @@ public class PullAPIWrapper {
              */
             final long timeoutMillis,
             /**
-             * 拉取方式，同步、异步、只发送不关注返回
+             * 拉取方式，同步、异步、只发送不关注返回，默认为异步拉取。
              */
             final CommunicationMode communicationMode,
             /**
@@ -209,6 +212,7 @@ public class PullAPIWrapper {
         if (findBrokerResult != null) {
             {
                 // check version
+                // 如果消息过滤方式为SQL，则RocketMQ版本必须要大于4.1.0
                 if (!ExpressionType.isTagType(expressionType)
                         && findBrokerResult.getBrokerVersion() < MQVersion.Version.V4_1_0_SNAPSHOT.ordinal()) {
                     throw new MQClientException("The broker[" + mq.getBrokerName() + ", "
@@ -237,7 +241,8 @@ public class PullAPIWrapper {
             requestHeader.setExpressionType(expressionType);
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
-            // 如果含classFilter文件，则上传到FilterServer
+            //
+
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
                 brokerAddr = computePullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }

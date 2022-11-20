@@ -48,11 +48,11 @@ public class ProcessQueue {
      */
     private final ReadWriteLock lockTreeMap = new ReentrantReadWriteLock();
     /**
-     * 临时存放消息用的
+     * 消息存储容器
      */
     private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
     /**
-     * 消息数量
+     * ProcessQueue中的消息数量
      */
     private final AtomicLong msgCount = new AtomicLong();
     /**
@@ -67,11 +67,14 @@ public class ProcessQueue {
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
     /**
-     * 整个ProcessQueue处理单元的offset最大边界
+     * 整个ProcessQueue处理单元中包含的最大队列偏移量。
      */
     private volatile long queueOffsetMax = 0L;
+    // 当前ProcessQueue是否被丢弃，默认为FALSE
     private volatile boolean dropped = false;
+    // 上次开始拉取消息的时间戳
     private volatile long lastPullTimestamp = System.currentTimeMillis();
+    // 上次消费消息的时间戳
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();

@@ -648,36 +648,65 @@ public class DefaultMessageStore implements MessageStore {
         long beginTime = this.getSystemClock().now();
 
         GetMessageStatus status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+        // 待查找队列的偏移量，Consumer端维护的每次拉取回来的offset最大的消息的下一个offset（维护在ProcessQueue的nextOffset字段中）
+        // 拉取消息成功之后，其会变成下一次可以开始拉取消息的offset。
         long nextBeginOffset = offset;
         long minOffset = 0;
         long maxOffset = 0;
 
         GetMessageResult getResult = new GetMessageResult();
 
+        // 当前CommitLog文件的最大偏移量
         final long maxOffsetPy = this.commitLog.getMaxOffset();
 
+        // 第三步：根据topic名称和队列编号获取消息消费队列ConsumeQueue。
         ConsumeQueue consumeQueue = findConsumeQueue(topic, queueId);
         if (consumeQueue != null) {
+            // 当前消息队列的最小偏移量
             minOffset = consumeQueue.getMinOffsetInQueue();
+            // 当前消息队列的最大偏移量
             maxOffset = consumeQueue.getMaxOffsetInQueue();
 
+            // 第四步：根据做消息偏移量异常情况校对下一次拉取偏移量
             if (maxOffset == 0) {
+                // (2) 如果maxOffset为0，表示当前消费队列中没有消息，拉取结果为`NO_MESSAGE_IN_QUEUE`，调整nextBeginOffset：
                 status = GetMessageStatus.NO_MESSAGE_IN_QUEUE;
+                /**
+                 * 如果当前Broker为主节点，设置下次拉取偏移量为0
+                 * 如果当前Broker为从节点，并且offsetCheckInSlave为true（默认为false），设置下次拉取偏移量为0。
+                 * 其余情况下，下次拉取时使用原偏移量
+                 */
                 nextBeginOffset = nextOffsetCorrection(offset, 0);
             } else if (offset < minOffset) {
+                // (2) 如果待拉取消息偏移量小于ConsumeQueue的起始偏移量，拉取结果为`OFFSET_TOO_SMALL`，调整nextBeginOffset：
                 status = GetMessageStatus.OFFSET_TOO_SMALL;
+                /**
+                 * 如果当前Broker为主节点，设置下次拉取偏移量为minOffset
+                 * 如果当前Broker为从节点，并且offsetCheckInSlave为true（默认为false），设置下次拉取偏移量为minOffset。
+                 * 其余情况下，下次拉取时使用原偏移量
+                 */
                 nextBeginOffset = nextOffsetCorrection(offset, minOffset);
             } else if (offset == maxOffset) {
+                // (3) 如果待拉取消息偏移量等于ConsumeQueue的最大偏移量，拉取结果为`OFFSET_OVERFLOW_ONE`，
+                // 调整nextBeginOffset为offset，表示下次拉取偏移量依旧是offset.
                 status = GetMessageStatus.OFFSET_OVERFLOW_ONE;
                 nextBeginOffset = nextOffsetCorrection(offset, offset);
             } else if (offset > maxOffset) {
+                // 如果待拉取消息偏移量 大于 ConsumeQueue的最大偏移量，拉取结果为`OFFSET_OVERFLOW_BADLY`，表示偏移量越界。
+                /**
+                 * 如果有新的消息到达，此时会创建一个新的ConsumeQueue文件；因为上一个ConsumeQueue文件的最大offset等于下一个文件的起始offset，
+                 * 所以继续按照这个offset第二次拉取消息。
+                 */
                 status = GetMessageStatus.OFFSET_OVERFLOW_BADLY;
                 if (0 == minOffset) {
+                    // 如果当前ConsumeQueue的最小偏移量为0，则使用最小偏移量纠正下次拉取偏移量。
                     nextBeginOffset = nextOffsetCorrection(offset, minOffset);
                 } else {
+                    // 否则，使用最大偏移量，纠正下次拉取偏移量。
                     nextBeginOffset = nextOffsetCorrection(offset, maxOffset);
                 }
             } else {
+                // 第五步：如果待拉取偏移量 大于 minOffset 并且小于maxOffset，从当前offset处尝试拉取默认32条消息，
                 SelectMappedBufferResult bufferConsumeQueue = consumeQueue.getIndexBuffer(offset);
                 if (bufferConsumeQueue != null) {
                     try {
@@ -773,6 +802,7 @@ public class DefaultMessageStore implements MessageStore {
                         bufferConsumeQueue.release();
                     }
                 } else {
+                    // 表示根据ConsumeQueue的偏移量没有找到找到内容，使用偏移量定位到下一个ConsumeQueue文件，nextBeginOffset = offset + （一个ConsumeQueue含有的条目=MappedFileSize / 20）。
                     status = GetMessageStatus.OFFSET_FOUND_NULL;
                     nextBeginOffset = nextOffsetCorrection(offset, consumeQueue.rollNextFile(offset));
                     log.warn("consumer request topic: " + topic + "offset: " + offset + " minOffset: " + minOffset + " maxOffset: "
@@ -780,6 +810,7 @@ public class DefaultMessageStore implements MessageStore {
                 }
             }
         } else {
+            // 如果 ConsumeQueue为空
             status = GetMessageStatus.NO_MATCHED_LOGIC_QUEUE;
             nextBeginOffset = nextOffsetCorrection(offset, 0);
         }
@@ -792,6 +823,7 @@ public class DefaultMessageStore implements MessageStore {
         long elapsedTime = this.getSystemClock().now() - beginTime;
         this.storeStatsService.setGetMessageEntireTimeMax(elapsedTime);
 
+        // 第六步：根据消息拉取结果，填充GetMessageResult的nextBeginOffset、maxOffset、minOffset
         getResult.setStatus(status);
         getResult.setNextBeginOffset(nextBeginOffset);
         getResult.setMaxOffset(maxOffset);

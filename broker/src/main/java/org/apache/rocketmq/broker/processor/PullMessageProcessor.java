@@ -151,6 +151,8 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
         SubscriptionData subscriptionData = null;
         ConsumerFilterData consumerFilterData = null;
+        // 1> 第一步：根据消息拉取请求构建订阅数据SubscriptionData；
+        // 如果消息拉取系统标识中包含subExpression表达式方式的过滤消费标识，则构建消费过滤数据ConsumerFilterData。
         if (hasSubscriptionFlag) {
             try {
                 subscriptionData = FilterAPI.build(
@@ -236,6 +238,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 this.brokerController.getConsumerFilterManager());
         }
 
+        // 第二步：调用MessageStore#getMessage()方法查找消息。
         final GetMessageResult getMessageResult =
             this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
@@ -245,6 +248,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
             responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
 
+            // 第七步：根据主从同步延迟，如果从节点数据包含下一次拉取的偏移量，则设置下一次拉取任务的brokerId为从节点的；否者依旧使用主节点。
             if (getMessageResult.isSuggestPullingFromSlave()) {
                 responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
             } else {
@@ -368,7 +372,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 this.executeConsumeMessageHookBefore(context);
             }
 
+            // 第八步：GetMessageResult 和 Response进行状态编码转换。
             switch (response.getCode()) {
+                // 成功
                 case ResponseCode.SUCCESS:
 
                     this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
@@ -406,6 +412,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         response = null;
                     }
                     break;
+                // * 未找到消息
                 case ResponseCode.PULL_NOT_FOUND:
 
                     if (brokerAllowSuspend && hasSuspendFlag) {
@@ -424,8 +431,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         break;
                     }
 
+                // * 立即重试
                 case ResponseCode.PULL_RETRY_IMMEDIATELY:
                     break;
+                // * 偏移量移动
                 case ResponseCode.PULL_OFFSET_MOVED:
                     if (this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE
                         || this.brokerController.getMessageStoreConfig().isOffsetCheckInSlave()) {
@@ -461,6 +470,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             response.setRemark("store getMessage return null");
         }
 
+        // 第九步：如果CommitLog是可用的，并且当前节点为主节点，更新相应消费组的消息消费进度。
         boolean storeOffsetEnable = brokerAllowSuspend;
         storeOffsetEnable = storeOffsetEnable && hasCommitOffsetFlag;
         storeOffsetEnable = storeOffsetEnable
@@ -469,6 +479,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             this.brokerController.getConsumerOffsetManager().commitOffset(RemotingHelper.parseChannelRemoteAddr(channel),
                 requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId(), requestHeader.getCommitOffset());
         }
+        // Consumer端接收返回时，需要重点关注PULL_NOT_FOUND、PULL_RETRY_IMMEDIATELY、PULL_OFFSET_MOVED等情况下如何校正消息拉取偏移量。
         return response;
     }
 
