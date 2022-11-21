@@ -189,6 +189,7 @@ public abstract class RebalanceImpl {
                 requestBody.setMqSet(mqs);
 
                 try {
+                    // 第一步：向Broker（Master节点）发送锁定消息队列请求；返回结果为成功被当前消费这锁定的消息消费队列。
                     Set<MessageQueue> lockOKMQSet =
                             this.mQClientFactory.getMQClientAPIImpl().lockBatchMQ(findBrokerResult.getBrokerAddr(), requestBody, 1000);
 
@@ -199,10 +200,12 @@ public abstract class RebalanceImpl {
                                 log.info("the message queue locked OK, Group: {} {}", this.consumerGroup, mq);
                             }
 
+                            // 第二步：将锁定成功的消息消费队列对应的ProcessQueue设置为锁定状态，同时更新加锁时间。
                             processQueue.setLocked(true);
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
                     }
+                    // 第三步：遍历当前Consumer负载的所有消息消费队列，如果当前消费者不可以再持有该消息队列的锁，则将ProcessQueue中锁的状态设置为false，暂停该消息消费队列的消息拉取与消息消费。
                     for (MessageQueue mq : mqs) {
                         if (!lockOKMQSet.contains(mq)) {
                             ProcessQueue processQueue = this.processQueueTable.get(mq);

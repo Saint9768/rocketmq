@@ -65,6 +65,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
     // 消息消费线程池
     private final ThreadPoolExecutor consumeExecutor;
     private final String consumerGroup;
+    // 消息消费端消息消费队列锁容器，内部持有。
     private final MessageQueueLock messageQueueLock = new MessageQueueLock();
     // 添加消费任务到consumeExecutor延迟调度器
     private final ScheduledExecutorService scheduledExecutorService;
@@ -91,6 +92,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
     }
 
     public void start() {
+        // ConsumeMessageOrderlyService启动时，如果消费模式为集群模式，启动一个定时任务，每隔20s向Broker锁定一次分配给自己的消息消费队列。
         if (MessageModel.CLUSTERING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())) {
             this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
                 @Override
@@ -285,6 +287,11 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                     this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
                     break;
                 case SUSPEND_CURRENT_QUEUE_A_MOMENT:
+                    /**
+                     * 消费失败，检查消息的重试次数阈值，重试次数阈值默认为Integer.MAX_VALUE；
+                     *     1）如果重试次数小于阈值，进行消息消费重试：将该批消息重新放入到ProcessQueue的msgTreeMap，清除consumingMsgOrderlyTreeMap中的相应消息，默认延迟1s再加入消费队列并结束本次消息消费。
+                     *     2）否者，将该消息发送到Broker端的DLQ队列；再直接调用ProcessQueue#commit()方法提交该批消息，表示消息消费成功。
+                     */
                     this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
                     if (checkReconsumeTimes(msgs)) {
                         consumeRequest.getProcessQueue().makeMessageToConsumeAgain(msgs);
@@ -301,7 +308,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                     break;
             }
         } else {
-        // 非自动提交Ack
+            // 非自动提交Ack
             switch (status) {
                 case SUCCESS:
                     this.getConsumerStatsManager().incConsumeOKTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), msgs.size());
@@ -338,6 +345,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
             }
         }
 
+        // 第十步：通知Broker消息消费结果，更新消息消费进度。
         if (commitOffset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
             this.defaultMQPushConsumerImpl.getOffsetStore().updateOffset(consumeRequest.getMessageQueue(), commitOffset, false);
         }
@@ -432,15 +440,23 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
 
         @Override
         public void run() {
+            // 第一步：如果ProcessQueue为dropped丢弃状态，则停止本次消息消费任务。
             if (this.processQueue.isDropped()) {
                 log.warn("run, the message queue not be able to consume, because it's dropped. {}", this.messageQueue);
                 return;
             }
 
+            /**
+             * 第二步：根据消息队列获取一个对象，针对这个对象加独占锁，保证同一消费队列在同一个时刻，只会被消费线程池中的一个线程消费。
+             */
             // 关键点，在于消息消费或获取的顺序性，既然要保证顺序性消费，就不可避免的引入锁机制
             // RocketMQ实现顺序消费是针对MessageQueue
             final Object objLock = messageQueueLock.fetchLockObject(this.messageQueue);
             synchronized (objLock) {
+                /**
+                 * 第三步：如果是广播模式，则直接进入消费，无需锁定ProcessQueue，因为各个Consumer之间没有竞争。
+                 *         如果是集群模式，消息消费的前提条件是ProcessQueue被锁定并且锁未超时。
+                 */
                 if (MessageModel.BROADCASTING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())
                         || (this.processQueue.isLocked() && !this.processQueue.isLockExpired())) {
                     final long beginTime = System.currentTimeMillis();
@@ -450,6 +466,7 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                             break;
                         }
 
+                        // 集群模式下如果没有获取到锁 或 持有锁过期；会尝试加锁，加锁成功之后10ms开始消费，加锁失败则3s后重试消费
                         if (MessageModel.CLUSTERING.equals(ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.messageModel())
                                 && !this.processQueue.isLocked()) {
                             log.warn("the message queue not locked, so consume later, {}", this.messageQueue);
@@ -464,12 +481,21 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                             break;
                         }
 
+                        /**
+                         * 第四步：顺序消费处理逻辑；
+                         *     每一个ConsumeRequest消费任务不是以消费消息条数来计算的，而是根据消费时间，默认当消费时间大于MAX_TIME_CONSUME_CONTINUOUSLY（60s），结束本次消费任务，由消费组内其他线程继续消费。
+                         */
                         long interval = System.currentTimeMillis() - beginTime;
                         if (interval > MAX_TIME_CONSUME_CONTINUOUSLY) {
                             ConsumeMessageOrderlyService.this.submitConsumeRequestLater(processQueue, messageQueue, 10);
                             break;
                         }
 
+                        /**
+                         * 第五步：每次从ProcessQueue中按顺序取出consumeBatchSize条消息（默认1条）；
+                         *         1）如果没取到，则设置continueConsume为false，本次消费任务结束。
+                         *         2）顺序消费时，从ProcessQueue中取出的消息会临时存储在ProcessQueue的consumingMsgOrderlyTreeMap属性中。
+                         */
                         final int consumeBatchSize =
                                 ConsumeMessageOrderlyService.this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
 
@@ -481,6 +507,9 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                             ConsumeOrderlyStatus status = null;
 
                             ConsumeMessageContext consumeMessageContext = null;
+                            /**
+                             * 第六步：执行消息消费钩子函数（before()方法）
+                             */
                             if (ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.hasHook()) {
                                 consumeMessageContext = new ConsumeMessageContext();
                                 consumeMessageContext
@@ -498,6 +527,10 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                             ConsumeReturnType returnType = ConsumeReturnType.SUCCESS;
                             boolean hasException = false;
                             try {
+                                /**
+                                 * 第七步：申请ProcessQueue的消息消费锁，如果消息队列被丢弃，则放弃消费该消息队列；
+                                 *         然后执行消息消费监听器MessageListener，执行业务逻辑；
+                                 */
                                 this.processQueue.getLockConsume().lock();
                                 if (this.processQueue.isDropped()) {
                                     log.warn("consumeMessage, the message queue not be able to consume, because it's dropped. {}",
@@ -557,13 +590,16 @@ public class ConsumeMessageOrderlyService implements ConsumeMessageService {
                                 consumeMessageContext.setStatus(status.toString());
                                 consumeMessageContext
                                         .setSuccess(ConsumeOrderlyStatus.SUCCESS == status || ConsumeOrderlyStatus.COMMIT == status);
+                                // 第八步：执行消息消费钩子函数（after()）
                                 ConsumeMessageOrderlyService.this.defaultMQPushConsumerImpl.executeHookAfter(consumeMessageContext);
                             }
 
                             ConsumeMessageOrderlyService.this.getConsumerStatsManager()
                                     .incConsumeRT(ConsumeMessageOrderlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
 
-                            // 处理消费结果
+                            /**
+                             * 第九步：处理消息消费结果，如果消费结果为SUCCESS，执行ProcessQueue的commit()方法：将这一批消息从consumingMsgOrderlyTreeMap清除，维护msgCount，返回待更新的消息消费进度。
+                             */
                             continueConsume = ConsumeMessageOrderlyService.this.processConsumeResult(msgs, status, context, this);
                         } else {
                             continueConsume = false;

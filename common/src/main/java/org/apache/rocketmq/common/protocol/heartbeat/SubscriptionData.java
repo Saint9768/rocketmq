@@ -33,11 +33,11 @@ public class SubscriptionData implements Comparable<SubscriptionData> {
     private boolean classFilterMode = false;
     // 订阅的topic
     private String topic;
-    // 订阅表达式
+    // 消息过滤表达式，多个用双竖线隔开，例如 TAGA||TAGB
     private String subString;
-    // 如果是tag过滤模式，这里是tag列表
+    // 如果是tag过滤模式，这里是tag列表，消息过滤标志tag集合，Consumer端进行消息过滤的依据
     private Set<String> tagsSet = new HashSet<String>();
-    // 如果是tag过滤模式，这里是tag对应的hashCode列表
+    // 如果是tag过滤模式，这里是tag对应的hashCode列表，消息过滤标志哈希码集合
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
     // 表达式类型，有TAG和SQL两种,默认是Tag
