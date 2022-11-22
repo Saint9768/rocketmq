@@ -43,25 +43,34 @@ public class PlainPermissionManager {
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
+    // ACL默认配置文件名称，默认值为：/conf/plain_acl.yml
     private static final String DEFAULT_PLAIN_ACL_FILE = "/conf/plain_acl.yml";
 
+    // 配置文件所在的目录，默认为RocketMQ的主目录
     private String fileHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY,
         System.getenv(MixAll.ROCKETMQ_HOME_ENV));
 
+    // ACL配置文件名称
     private String fileName = System.getProperty("rocketmq.acl.plain.file", DEFAULT_PLAIN_ACL_FILE);
 
+    // 权限配置映射表，用户名为key。
     private  Map<String/** AccessKey **/, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
 
     private  List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
+    // 远程IP解析策略工厂，用于解析白名单IP地址
     private RemoteAddressStrategyFactory remoteAddressStrategyFactory = new RemoteAddressStrategyFactory();
 
+    // 是否兼容plain_acl.yml文件，一旦改文件的内容改变，可以在不重启服务的情况下自动生效。
     private boolean isWatchStart;
 
+    // 配置文件版本号
     private final DataVersion dataVersion = new DataVersion();
 
     public PlainPermissionManager() {
+        // 解析ACL配置文件，将ACL配置规则加载到内存中。
         load();
+        // 监听ACL配置文件的变更
         watch();
     }
 
@@ -70,12 +79,21 @@ public class PlainPermissionManager {
         Map<String, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
         List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
+        // 第一步：通过YAML类库将配置文件解析成一个JSONObject
         JSONObject plainAclConfData = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
             JSONObject.class);
         if (plainAclConfData == null || plainAclConfData.isEmpty()) {
             throw new AclException(String.format("%s file is not data", fileHome + File.separator + fileName));
         }
         log.info("Broker plain acl conf data is : ", plainAclConfData.toString());
+        /**
+         * 第二步：根据ACL配置文件中配置的全局白名单列表，构建对应规则的地址校验器（RemoteAddressStrategy）
+         *      1）NullRemoteAddressStrategy --> 表示全部匹配，该条规则直接返回true，将会阻断其他规则的判断，慎用
+         *      2）BlankRemoteAddressStrategy --> 表示不设置白名单，该条规则默认返回false。
+         *      3）MultipleRemoteAddressStrategy --> 多地址匹配模式，IP地址的最后一组使用{},大括号中可以包含多个IP地址，用英文逗号隔开，例如：192.168.0.{100,101}
+         *      4）RangeRemoteAddressStrategy --> 范围类地址匹配模式，例如：192.168.*. 或 192.168.100-200.10-20
+         *      5）OneRemoteAddressStrategy --> 单个IP地址配置模式，例如：192.168.1.1
+         */
         JSONArray globalWhiteRemoteAddressesList = plainAclConfData.getJSONArray("globalWhiteRemoteAddresses");
         if (globalWhiteRemoteAddressesList != null && !globalWhiteRemoteAddressesList.isEmpty()) {
             for (int i = 0; i < globalWhiteRemoteAddressesList.size(); i++) {
@@ -84,6 +102,7 @@ public class PlainPermissionManager {
             }
         }
 
+        // 第三步：接收account的标签，按用户名将配置规则存入plainAccessResourceMap。
         JSONArray accounts = plainAclConfData.getJSONArray(AclConstants.CONFIG_ACCOUNTS);
         if (accounts != null && !accounts.isEmpty()) {
             List<PlainAccessConfig> plainAccessConfigList = accounts.toJavaList(PlainAccessConfig.class);
@@ -292,6 +311,9 @@ public class PlainPermissionManager {
         return aclConfig;
     }
 
+    /**
+     * 创建一个FileWatchService线程，用于监听ACL的规则配置文件，一旦配置文件的内容发生变化，则执行FileWatchService.Listener的回调函数onChanged()，执行配置规则的重新加载
+     */
     private void watch() {
         try {
             String watchFilePath = fileHome + fileName;
@@ -311,22 +333,29 @@ public class PlainPermissionManager {
     }
 
     void checkPerm(PlainAccessResource needCheckedAccess, PlainAccessResource ownedAccess) {
+        // 第六步：如果当前操作要求必须拥有管理员权限，但当前用户不是管理员角色，则抛出ACL访问异常。
         if (Permission.needAdminPerm(needCheckedAccess.getRequestCode()) && !ownedAccess.isAdmin()) {
             throw new AclException(String.format("Need admin permission for request code=%d, but accessKey=%s is not", needCheckedAccess.getRequestCode(), ownedAccess.getAccessKey()));
         }
         Map<String, Byte> needCheckedPermMap = needCheckedAccess.getResourcePermMap();
         Map<String, Byte> ownedPermMap = ownedAccess.getResourcePermMap();
 
+        // 第七步：如果本次操作的资源无需权限验证，则直接通过。
         if (needCheckedPermMap == null) {
             // If the needCheckedPermMap is null,then return
             return;
         }
 
+        // 如果当前操作的用户是超级管理员角色，但未设置任何访问规则，也通过验证。
         if (ownedPermMap == null && ownedAccess.isAdmin()) {
             // If the ownedPermMap is null and it is an admin user, then return
             return;
         }
 
+        /**
+         * 第八步：遍历需要的权限与用户拥有的权限并进行对比，判断是否匹配；
+         *         1）如果用户没有资源的访问权限，则判断默认权限是否允许操作，如果不允许，则抛出ACLException
+         */
         for (Map.Entry<String, Byte> needCheckedEntry : needCheckedPermMap.entrySet()) {
             String resource = needCheckedEntry.getKey();
             Byte neededPerm = needCheckedEntry.getValue();
@@ -383,12 +412,14 @@ public class PlainPermissionManager {
     public void validate(PlainAccessResource plainAccessResource) {
 
         // Check the global white remote addr
+        // 第一步：使用全局白名单对客户端IP进行验证，只需要白名单规则中任意一个规则匹配即通过验证
         for (RemoteAddressStrategy remoteAddressStrategy : globalWhiteRemoteAddressStrategy) {
             if (remoteAddressStrategy.match(plainAccessResource)) {
                 return;
             }
         }
 
+        // 第二步：如果在Broker端的ACL配置文件中没有包含请求用户的访问控制规则，则直接抛出异常，禁止本次操作
         if (plainAccessResource.getAccessKey() == null) {
             throw new AclException(String.format("No accessKey is configured"));
         }
@@ -398,18 +429,20 @@ public class PlainPermissionManager {
         }
 
         // Check the white addr for accesskey
+        // 第三步：验证用户级别的配置的IP白名单规则，如果客户端IP与用户级的IP白名单匹配，则直接返回校验通过。
         PlainAccessResource ownedAccess = plainAccessResourceMap.get(plainAccessResource.getAccessKey());
         if (ownedAccess.getRemoteAddressStrategy().match(plainAccessResource)) {
             return;
         }
 
         // Check the signature
+        // 第四步：验证签名是否一致，如果一致，签名验证通过，否则返回ACL校验异常，禁止本次操作。
         String signature = AclUtils.calSignature(plainAccessResource.getContent(), ownedAccess.getSecretKey());
         if (!signature.equals(plainAccessResource.getSignature())) {
             throw new AclException(String.format("Check signature failed for accessKey=%s", plainAccessResource.getAccessKey()));
         }
         // Check perm of each resource
-
+        // 第五步：校验资源的访问权限
         checkPerm(plainAccessResource, ownedAccess);
     }
 

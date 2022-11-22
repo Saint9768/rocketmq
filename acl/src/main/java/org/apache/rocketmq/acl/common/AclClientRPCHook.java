@@ -29,6 +29,7 @@ import static org.apache.rocketmq.acl.common.SessionCredentials.SECURITY_TOKEN;
 import static org.apache.rocketmq.acl.common.SessionCredentials.SIGNATURE;
 
 public class AclClientRPCHook implements RPCHook {
+    // 会话凭证，用来标识一个用户的信息
     private final SessionCredentials sessionCredentials;
     protected ConcurrentHashMap<Class<? extends CommandCustomHeader>, Field[]> fieldCache =
         new ConcurrentHashMap<Class<? extends CommandCustomHeader>, Field[]>();
@@ -39,6 +40,11 @@ public class AclClientRPCHook implements RPCHook {
 
     @Override
     public void doBeforeRequest(String remoteAddr, RemotingCommand request) {
+        /**
+         * 将当前访问的用户名加入请求到请求参数，然后对参数进行排序（利用SortedMap的排序特性）
+         *     遍历SortedMap，将其参数追加到StringBuffer中，然后与secretKey一起生成签名字符串，并使用md5算法生成验证签名。
+         *     将生成的验证参数做为请求的扩展字段数据传递到服务端。
+         */
         byte[] total = AclUtils.combineRequestContent(request,
             parseRequestContent(request, sessionCredentials.getAccessKey(), sessionCredentials.getSecurityToken()));
         String signature = AclUtils.calSignature(total, sessionCredentials.getSecretKey());

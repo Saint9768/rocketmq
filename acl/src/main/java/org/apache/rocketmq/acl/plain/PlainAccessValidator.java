@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
+
 import org.apache.rocketmq.acl.AccessResource;
 import org.apache.rocketmq.acl.AccessValidator;
 import org.apache.rocketmq.acl.common.AclException;
@@ -45,11 +46,18 @@ public class PlainAccessValidator implements AccessValidator {
     private PlainPermissionManager aclPlugEngine;
 
     public PlainAccessValidator() {
+        // PlainPermissionManager用于解析plain_acl.yml文件，加载配置文件中的访问控制规则。
         aclPlugEngine = new PlainPermissionManager();
     }
 
+    /**
+     * 从请求中解析本次请求对应的访问资源，即本次请求需要的访问权限
+     */
     @Override
     public AccessResource parse(RemotingCommand request, String remoteAddr) {
+        /**
+         * 第一步：首先创建还一个PlainAccessResource对象，用于表示一次请求需要访问的权限；其中包括：请求的来源IP
+         */
         PlainAccessResource accessResource = new PlainAccessResource();
         if (remoteAddr != null && remoteAddr.contains(":")) {
             accessResource.setWhiteRemoteAddress(remoteAddr.substring(0, remoteAddr.lastIndexOf(':')));
@@ -59,6 +67,11 @@ public class PlainAccessValidator implements AccessValidator {
 
         accessResource.setRequestCode(request.getCode());
 
+        /**
+         * 第二步：进一步处理资源对象：
+         *     1）如果请求的扩展字段为空，则直接返回资源；即后续的访问控制只针对IP地址；
+         *     2）否则从请求体中提取客户端的访问用户名、签名字符串、安全令牌，放到PlainAccessResource中。
+         */
         if (request.getExtFields() == null) {
             // If request's extFields is null,then return accessResource directly(users can use whiteAddress pattern)
             // The following logic codes depend on the request's extFields not to be null.
@@ -68,6 +81,7 @@ public class PlainAccessValidator implements AccessValidator {
         accessResource.setSignature(request.getExtFields().get(SessionCredentials.SIGNATURE));
         accessResource.setSecretToken(request.getExtFields().get(SessionCredentials.SECURITY_TOKEN));
 
+        // 第三步：根据请求的类型（比如：发送消息、消息拉取、心跳请求等）设置本次请求需要获得的权限。
         try {
             switch (request.getCode()) {
                 case RequestCode.SEND_MESSAGE:
@@ -98,20 +112,20 @@ public class PlainAccessValidator implements AccessValidator {
                     break;
                 case RequestCode.UNREGISTER_CLIENT:
                     final UnregisterClientRequestHeader unregisterClientRequestHeader =
-                        (UnregisterClientRequestHeader) request
-                            .decodeCommandCustomHeader(UnregisterClientRequestHeader.class);
+                            (UnregisterClientRequestHeader) request
+                                    .decodeCommandCustomHeader(UnregisterClientRequestHeader.class);
                     accessResource.addResourceAndPerm(getRetryTopic(unregisterClientRequestHeader.getConsumerGroup()), Permission.SUB);
                     break;
                 case RequestCode.GET_CONSUMER_LIST_BY_GROUP:
                     final GetConsumerListByGroupRequestHeader getConsumerListByGroupRequestHeader =
-                        (GetConsumerListByGroupRequestHeader) request
-                            .decodeCommandCustomHeader(GetConsumerListByGroupRequestHeader.class);
+                            (GetConsumerListByGroupRequestHeader) request
+                                    .decodeCommandCustomHeader(GetConsumerListByGroupRequestHeader.class);
                     accessResource.addResourceAndPerm(getRetryTopic(getConsumerListByGroupRequestHeader.getConsumerGroup()), Permission.SUB);
                     break;
                 case RequestCode.UPDATE_CONSUMER_OFFSET:
                     final UpdateConsumerOffsetRequestHeader updateConsumerOffsetRequestHeader =
-                        (UpdateConsumerOffsetRequestHeader) request
-                            .decodeCommandCustomHeader(UpdateConsumerOffsetRequestHeader.class);
+                            (UpdateConsumerOffsetRequestHeader) request
+                                    .decodeCommandCustomHeader(UpdateConsumerOffsetRequestHeader.class);
                     accessResource.addResourceAndPerm(getRetryTopic(updateConsumerOffsetRequestHeader.getConsumerGroup()), Permission.SUB);
                     accessResource.addResourceAndPerm(updateConsumerOffsetRequestHeader.getTopic(), Permission.SUB);
                     break;
@@ -123,7 +137,7 @@ public class PlainAccessValidator implements AccessValidator {
             throw new AclException(t.getMessage(), t);
         }
 
-        // Content
+        // 第四步：对扩展字段进行排序，以生成签名字符串，然后将扩展字段与请求体body写入content字段，完成从请求头中解析出请求需要验证的权限。
         SortedMap<String, String> map = new TreeMap<String, String>();
         for (Map.Entry<String, String> entry : request.getExtFields().entrySet()) {
             if (!SessionCredentials.SIGNATURE.equals(entry.getKey())
@@ -135,8 +149,15 @@ public class PlainAccessValidator implements AccessValidator {
         return accessResource;
     }
 
+    /**
+     * 根据本次需要访问的权限，与发起请求的用户拥有的权限进行对比验证，判断请求用户是否拥有权限。
+     * 如果请求用户没有访问该资源的权限，则抛出异常AclException，否则放行。
+     *
+     * @param accessResource
+     */
     @Override
     public void validate(AccessResource accessResource) {
+        // 权限验证：
         aclPlugEngine.validate((PlainAccessResource) accessResource);
     }
 
@@ -150,15 +171,23 @@ public class PlainAccessValidator implements AccessValidator {
         return aclPlugEngine.deleteAccessConfig(accesskey);
     }
 
-    @Override public String getAclConfigVersion() {
+    @Override
+    public String getAclConfigVersion() {
         return aclPlugEngine.getAclConfigDataVersion();
     }
 
-    @Override public boolean updateGlobalWhiteAddrsConfig(List<String> globalWhiteAddrsList) {
+    @Override
+    public boolean updateGlobalWhiteAddrsConfig(List<String> globalWhiteAddrsList) {
         return aclPlugEngine.updateGlobalWhiteAddrsConfig(globalWhiteAddrsList);
     }
 
-    @Override public AclConfig getAllAclConfig() {
+    /**
+     * 获取ACL相关的所有配置信息
+     *
+     * @return
+     */
+    @Override
+    public AclConfig getAllAclConfig() {
         return aclPlugEngine.getAllAclConfig();
     }
 }

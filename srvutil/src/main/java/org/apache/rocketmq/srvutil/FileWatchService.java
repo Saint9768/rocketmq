@@ -36,10 +36,15 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 public class FileWatchService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
+    // 需要监听的文件列表
     private final List<String> watchFiles;
+    // 当前监听一次文件对应的哈希值
     private final List<String> fileCurrentHash;
+    // 配置变更监听器，即配置发生变化后需要执行的处理逻辑
     private final Listener listener;
+    // 检查配置是否变更的频率
     private static final int WATCH_INTERVAL = 500;
+    // 对文件的内容进行md5加密，计算文件的哈希值
     private MessageDigest md = MessageDigest.getInstance("MD5");
 
     public FileWatchService(final String[] watchFiles,
@@ -49,6 +54,7 @@ public class FileWatchService extends ServiceThread {
         this.fileCurrentHash = new ArrayList<>();
 
         for (int i = 0; i < watchFiles.length; i++) {
+            // 如果文件存储，则将文件路径加入watchFiles
             if (StringUtils.isNotEmpty(watchFiles[i]) && new File(watchFiles[i]).exists()) {
                 this.watchFiles.add(watchFiles[i]);
                 this.fileCurrentHash.add(hash(watchFiles[i]));
@@ -67,16 +73,19 @@ public class FileWatchService extends ServiceThread {
 
         while (!this.isStopped()) {
             try {
+                // 每500ms校验一次文件内容
                 this.waitForRunning(WATCH_INTERVAL);
 
                 for (int i = 0; i < watchFiles.size(); i++) {
                     String newHash;
                     try {
+                        // 计算当前配置文件的md5值
                         newHash = hash(watchFiles.get(i));
                     } catch (Exception ignored) {
                         log.warn(this.getServiceName() + " service has exception when calculate the file hash. ", ignored);
                         continue;
                     }
+                    // 如果两次计算的md5值不同，意味着文件内容发生变化，则调用对应的事件处理方法。
                     if (!newHash.equals(fileCurrentHash.get(i))) {
                         fileCurrentHash.set(i, newHash);
                         listener.onChanged(watchFiles.get(i));

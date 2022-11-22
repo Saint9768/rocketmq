@@ -616,14 +616,18 @@ public class BrokerController {
             return;
         }
 
-        // 初始化权限服务
+        // 开启ACL功能之后，会使用SPI机制加载配置的权限校验器AccessValidator
         List<AccessValidator> accessValidators = ServiceProvider.load(ServiceProvider.ACL_VALIDATOR_ID, AccessValidator.class);
         if (accessValidators == null || accessValidators.isEmpty()) {
             log.info("The broker dose not load the AccessValidator");
             return;
         }
 
-        // 将权限校验都加入到对应的校验器中
+        /**
+         * 遍历所有的AccessValidator，将其保存到BrokerController的`accessValidatorMap`属性中，并作为RPCHook注册到Broker的处理服务器`RemotingServer`中；
+         *     1）RPCHook的`doBeforeRequest()`方法将在Broker端接收到Consumer/Producer的请求并解码请求后、执行请求前被调用。
+         *     2）`doAfterResponse()`方法将在处理完请求后调用，RocketMQ中默认的PlainAccessValidator没有此后置逻辑。
+         */
         for (AccessValidator accessValidator : accessValidators) {
             final AccessValidator validator = accessValidator;
             accessValidatorMap.put(validator.getClass(), validator);

@@ -24,9 +24,13 @@ import org.apache.rocketmq.common.MixAll;
 
 public class SessionCredentials {
     public static final Charset CHARSET = Charset.forName("UTF-8");
+    // 用户名
     public static final String ACCESS_KEY = "AccessKey";
+    // 用户访问秘钥。客户端首先会对请求参数进行排序，然后使用该秘钥对请求参数生成签名验证参数，并随着请求传递到服务端。但是秘钥不会在网络上进行传输
     public static final String SECRET_KEY = "SecretKey";
+    // 签名字符串
     public static final String SIGNATURE = "Signature";
+    // 安全会话令牌，通常只使用accessKey 和  secretKey
     public static final String SECURITY_TOKEN = "SecurityToken";
 
     public static final String KEY_FILE = System.getProperty("rocketmq.client.keyFile",
