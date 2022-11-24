@@ -18,6 +18,7 @@ package org.apache.rocketmq.acl.plain;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,6 +26,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.rocketmq.acl.common.AclConstants;
 import org.apache.rocketmq.acl.common.AclException;
@@ -48,15 +50,15 @@ public class PlainPermissionManager {
 
     // 配置文件所在的目录，默认为RocketMQ的主目录
     private String fileHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY,
-        System.getenv(MixAll.ROCKETMQ_HOME_ENV));
+            System.getenv(MixAll.ROCKETMQ_HOME_ENV));
 
     // ACL配置文件名称
     private String fileName = System.getProperty("rocketmq.acl.plain.file", DEFAULT_PLAIN_ACL_FILE);
 
     // 权限配置映射表，用户名为key。
-    private  Map<String/** AccessKey **/, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
+    private Map<String/** AccessKey **/, PlainAccessResource> plainAccessResourceMap = new HashMap<>();
 
-    private  List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
+    private List<RemoteAddressStrategy> globalWhiteRemoteAddressStrategy = new ArrayList<>();
 
     // 远程IP解析策略工厂，用于解析白名单IP地址
     private RemoteAddressStrategyFactory remoteAddressStrategyFactory = new RemoteAddressStrategyFactory();
@@ -81,7 +83,7 @@ public class PlainPermissionManager {
 
         // 第一步：通过YAML类库将配置文件解析成一个JSONObject
         JSONObject plainAclConfData = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
-            JSONObject.class);
+                JSONObject.class);
         if (plainAclConfData == null || plainAclConfData.isEmpty()) {
             throw new AclException(String.format("%s file is not data", fileHome + File.separator + fileName));
         }
@@ -108,7 +110,7 @@ public class PlainPermissionManager {
             List<PlainAccessConfig> plainAccessConfigList = accounts.toJavaList(PlainAccessConfig.class);
             for (PlainAccessConfig plainAccessConfig : plainAccessConfigList) {
                 PlainAccessResource plainAccessResource = buildPlainAccessResource(plainAccessConfig);
-                plainAccessResourceMap.put(plainAccessResource.getAccessKey(),plainAccessResource);
+                plainAccessResourceMap.put(plainAccessResource.getAccessKey(), plainAccessResource);
             }
         }
 
@@ -151,7 +153,7 @@ public class PlainPermissionManager {
         }
 
         Map<String, Object> aclAccessConfigMap = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
-            Map.class);
+                Map.class);
 
         List<Map<String, Object>> accounts = (List<Map<String, Object>>) aclAccessConfigMap.get(AclConstants.CONFIG_ACCOUNTS);
         Map<String, Object> updateAccountMap = null;
@@ -184,7 +186,7 @@ public class PlainPermissionManager {
     }
 
     private Map<String, Object> createAclAccessConfigMap(Map<String, Object> existedAccountMap, PlainAccessConfig plainAccessConfig) {
-        
+
         Map<String, Object> newAccountsMap = null;
         if (existedAccountMap == null) {
             newAccountsMap = new LinkedHashMap<String, Object>();
@@ -193,7 +195,7 @@ public class PlainPermissionManager {
         }
 
         if (StringUtils.isEmpty(plainAccessConfig.getAccessKey()) ||
-            plainAccessConfig.getAccessKey().length() <= AclConstants.ACCESS_KEY_MIN_LENGTH) {
+                plainAccessConfig.getAccessKey().length() <= AclConstants.ACCESS_KEY_MIN_LENGTH) {
             throw new AclException(String.format(
                     "The accessKey=%s cannot be null and length should longer than 6",
                     plainAccessConfig.getAccessKey()));
@@ -203,8 +205,8 @@ public class PlainPermissionManager {
         if (!StringUtils.isEmpty(plainAccessConfig.getSecretKey())) {
             if (plainAccessConfig.getSecretKey().length() <= AclConstants.SECRET_KEY_MIN_LENGTH) {
                 throw new AclException(String.format(
-                    "The secretKey=%s value length should longer than 6",
-                    plainAccessConfig.getSecretKey()));
+                        "The secretKey=%s value length should longer than 6",
+                        plainAccessConfig.getSecretKey()));
             }
             newAccountsMap.put(AclConstants.CONFIG_SECRET_KEY, (String) plainAccessConfig.getSecretKey());
         }
@@ -237,7 +239,7 @@ public class PlainPermissionManager {
         }
 
         Map<String, Object> aclAccessConfigMap = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
-                    Map.class);
+                Map.class);
 
         List<Map<String, Object>> accounts = (List<Map<String, Object>>) aclAccessConfigMap.get("accounts");
         if (accounts != null) {
@@ -269,7 +271,7 @@ public class PlainPermissionManager {
         }
 
         Map<String, Object> aclAccessConfigMap = AclUtils.getYamlDataObject(fileHome + File.separator + fileName,
-            Map.class);
+                Map.class);
 
         List<String> globalWhiteRemoteAddrList = (List<String>) aclAccessConfigMap.get(AclConstants.CONFIG_GLOBAL_WHITE_ADDRS);
 
@@ -278,7 +280,7 @@ public class PlainPermissionManager {
             globalWhiteRemoteAddrList.addAll(globalWhiteAddrsList);
 
             // Update globalWhiteRemoteAddr element in memeory map firstly
-            aclAccessConfigMap.put(AclConstants.CONFIG_GLOBAL_WHITE_ADDRS,globalWhiteRemoteAddrList);
+            aclAccessConfigMap.put(AclConstants.CONFIG_GLOBAL_WHITE_ADDRS, globalWhiteRemoteAddrList);
             if (AclUtils.writeDataObject(fileHome + File.separator + fileName, updateAclConfigFileVersion(aclAccessConfigMap))) {
                 return true;
             }
@@ -317,7 +319,7 @@ public class PlainPermissionManager {
     private void watch() {
         try {
             String watchFilePath = fileHome + fileName;
-            FileWatchService fileWatchService = new FileWatchService(new String[] {watchFilePath}, new FileWatchService.Listener() {
+            FileWatchService fileWatchService = new FileWatchService(new String[]{watchFilePath}, new FileWatchService.Listener() {
                 @Override
                 public void onChanged(String path) {
                     log.info("The plain acl yml changed, reload the context");
@@ -361,15 +363,18 @@ public class PlainPermissionManager {
             Byte neededPerm = needCheckedEntry.getValue();
             boolean isGroup = PlainAccessResource.isRetryTopic(resource);
 
+            // 如果在用户配置的访问控制规则中找不到当前资源、或用户的访问控制规则为空。进一步判断默认用户的默认Topic、Consumer访问权限
             if (ownedPermMap == null || !ownedPermMap.containsKey(resource)) {
                 // Check the default perm
+                // 如果所需资源是重试topic，则使用权限控制规则的消费组默认访问权限；否者使用权限控制规则的Topic默认访问权限
                 byte ownedPerm = isGroup ? ownedAccess.getDefaultGroupPerm() :
-                    ownedAccess.getDefaultTopicPerm();
+                        ownedAccess.getDefaultTopicPerm();
                 if (!Permission.checkPermission(neededPerm, ownedPerm)) {
                     throw new AclException(String.format("No default permission for %s", PlainAccessResource.printStr(resource, isGroup)));
                 }
                 continue;
             }
+            // 如果用户
             if (!Permission.checkPermission(neededPerm, ownedPermMap.get(resource))) {
                 throw new AclException(String.format("No default permission for %s", PlainAccessResource.printStr(resource, isGroup)));
             }
@@ -383,11 +388,11 @@ public class PlainPermissionManager {
 
     public PlainAccessResource buildPlainAccessResource(PlainAccessConfig plainAccessConfig) throws AclException {
         if (plainAccessConfig.getAccessKey() == null
-            || plainAccessConfig.getSecretKey() == null
-            || plainAccessConfig.getAccessKey().length() <= AclConstants.ACCESS_KEY_MIN_LENGTH
-            || plainAccessConfig.getSecretKey().length() <= AclConstants.SECRET_KEY_MIN_LENGTH) {
+                || plainAccessConfig.getSecretKey() == null
+                || plainAccessConfig.getAccessKey().length() <= AclConstants.ACCESS_KEY_MIN_LENGTH
+                || plainAccessConfig.getSecretKey().length() <= AclConstants.SECRET_KEY_MIN_LENGTH) {
             throw new AclException(String.format(
-                "The accessKey=%s and secretKey=%s cannot be null and length should longer than 6",
+                    "The accessKey=%s and secretKey=%s cannot be null and length should longer than 6",
                     plainAccessConfig.getAccessKey(), plainAccessConfig.getSecretKey()));
         }
         PlainAccessResource plainAccessResource = new PlainAccessResource();
@@ -419,11 +424,12 @@ public class PlainPermissionManager {
             }
         }
 
-        // 第二步：如果在Broker端的ACL配置文件中没有包含请求用户的访问控制规则，则直接抛出异常，禁止本次操作
+        // 请求中不包含用户名
         if (plainAccessResource.getAccessKey() == null) {
             throw new AclException(String.format("No accessKey is configured"));
         }
 
+        // 第二步：如果在Broker端的ACL配置文件中没有包含请求用户的访问控制规则，则直接抛出异常，禁止本次操作
         if (!plainAccessResourceMap.containsKey(plainAccessResource.getAccessKey())) {
             throw new AclException(String.format("No acl config for %s", plainAccessResource.getAccessKey()));
         }

@@ -40,7 +40,7 @@ public class PlainAccessResource implements AccessResource {
     // 默认topic的访问权限，1表示DENY
     private byte defaultTopicPerm = 1;
 
-    // 消费者默认访问权限，默认为DENY
+    // 消费组默认访问权限，默认为DENY
     private byte defaultGroupPerm = 1;
 
     // 资源需要的访问权限映射表
